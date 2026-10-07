@@ -1,4 +1,4 @@
-import { ComboBox, Button, AboutSlint, CheckBox, SpinBox } from "std-widgets.slint";
+import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
 
 // Text centred on (x, y); see `view.rs`.
@@ -26,6 +26,12 @@ export component AppWindow inherits Window {
     preferred-height: 720px;
     background: #fbfaf6;
     forward-focus: main;
+
+    // The score is drawn as dark ink on light paper, so the widgets use the
+    // light scheme too, even when the system is in dark mode.
+    init => {
+        Palette.color-scheme = ColorScheme.light;
+    }
 
     in property <string> window-title: "Intavolatura";
     in property <[Glyph]> glyphs;
