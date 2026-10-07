@@ -56,11 +56,11 @@ const TAB_TOP: f32 = VOICING_BASS_TOP + 9.0 * SPACE + 6.0 * TAB_LINE;
 const TAB_LINE: f32 = 16.0;
 /// Size of the historical tablature signs, a little under Bravura's four
 /// staff spaces per em with a tablature line gap as the space.
-const TAB_MUSIC_SIZE: f32 = 3.0 * TAB_LINE;
-const TAB_GLYPH_WIDTH: f32 = 0.55 * TAB_LINE;
+const TAB_MUSIC_SIZE: f32 = 2.4 * TAB_LINE;
+const TAB_GLYPH_WIDTH: f32 = 0.45 * TAB_LINE;
 /// Bravura sets the signs on their baseline; this lowers them so they are
 /// centred on the line instead.
-const TAB_GLYPH_DROP: f32 = 0.36 * TAB_LINE;
+const TAB_GLYPH_DROP: f32 = 0.12 * TAB_MUSIC_SIZE;
 const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
 pub const CONTENT_BOTTOM: f32 = TAB_BOTTOM + 4.0 * TAB_LINE;
 
@@ -852,9 +852,9 @@ impl Scene {
             let width = TAB_GLYPH_WIDTH * text.chars().count() as f32 + 3.0;
             self.bars.push(Bar {
                 x: x - width / 2.0,
-                y: y - 0.45 * TAB_LINE,
+                y: y - 0.35 * TAB_LINE,
                 width,
-                height: 0.9 * TAB_LINE,
+                height: 0.7 * TAB_LINE,
                 knockout: true,
             });
         }
