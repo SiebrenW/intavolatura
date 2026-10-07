@@ -13,14 +13,14 @@ Each step is buildable and tested before the next starts.
 3. [x] **Key**: major/minor keys, key signatures, scale degrees, diatonic stepping of a bass note.
 4. [x] **Figuring**: parser for the input syntax, normalised figuring, display form.
 5. [x] **Chord**: intervals; bass note + figuring + key → chord; required notes, dissonances, root, leading-tone hint.
-6. [ ] **Bass line**: columns, editing commands, pins, undo/redo.
+6. [x] **Bass line**: columns, editing commands, pins, undo/redo.
 7. [x] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
 8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
 9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
 10. [ ] **File format**: save/load the app's own text format.
 11. [ ] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown.
 12. [ ] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
-13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning), About dialog with Slint attribution, startup time and memory checks.
+13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
 
 ## Features
 
@@ -41,8 +41,9 @@ Each step is buildable and tested before the next starts.
   - [ ] Leading-tone hint: faded (♯) in minor where a raised 3rd is likely but unmarked; can be disabled in settings
 - [ ] Fingering generation
   - [ ] Generate all candidate fingerings for each chord on the current instrument
-  - [ ] Show the top-ranked candidate; `[` / `]` cycle through the others and pin the choice
-  - [ ] A pin is dropped when the bass note or figuring changes (undo restores it)
+  - [ ] Show the top-ranked candidate; `[` / `]` cycle through the top N and pin the choice (N is a setting, default 10)
+  - [ ] A pin is dropped when the bass note or figuring changes, and all pins when the key changes (undo restores them)
+  - [ ] Cycling back to the best candidate unpins, so the note follows the ranking again
 - [ ] Views
   - [ ] Three rows aligned in columns: bass staff, voicing staff (grand staff), tablature
   - [ ] Selected column highlighted across all rows
