@@ -1,6 +1,7 @@
 //! The Intavolatura desktop app: Slint UI over `intavolatura-core`.
 
 pub mod app;
+pub mod preferences;
 pub mod ui;
 pub mod view;
 

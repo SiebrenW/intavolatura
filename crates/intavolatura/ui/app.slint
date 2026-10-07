@@ -1,4 +1,4 @@
-import { ComboBox, Button, AboutSlint } from "std-widgets.slint";
+import { ComboBox, Button, AboutSlint, CheckBox, SpinBox } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
 
 // Text centred on (x, y); see `view.rs`.
@@ -21,12 +21,13 @@ export struct Bar {
 }
 
 export component AppWindow inherits Window {
-    title: "Intavolatura";
+    title: root.window-title;
     preferred-width: 1000px;
     preferred-height: 720px;
     background: #fbfaf6;
     forward-focus: main;
 
+    in property <string> window-title: "Intavolatura";
     in property <[Glyph]> glyphs;
     in property <[Bar]> bars;
     in property <length> content-width;
@@ -46,6 +47,12 @@ export component AppWindow inherits Window {
     in-out property <length> scroll-x;
     out property <length> view-width: flick.width;
 
+    // Settings popup.
+    in-out property <bool> show-hints;
+    in-out property <bool> retune-diapasons;
+    in-out property <int> fret-span;
+    in-out property <int> candidates-to-cycle;
+
     // A click in content coordinates.
     callback clicked(length, length);
     // A key press: text, shift, control (command on macOS). Returns whether handled.
@@ -54,6 +61,9 @@ export component AppWindow inherits Window {
     callback tablature-selected(int);
     callback figuring-edited(string);
     callback figuring-accepted(string);
+    callback open-file();
+    callback save-file();
+    callback preferences-changed();
 
     public function focus-main() {
         main.focus();
@@ -114,6 +124,29 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                     horizontal-alignment: right;
                     color: #6b6b6b;
+                }
+
+                Button {
+                    text: "Open";
+                    clicked => {
+                        root.open-file();
+                        main.focus();
+                    }
+                }
+
+                Button {
+                    text: "Save";
+                    clicked => {
+                        root.save-file();
+                        main.focus();
+                    }
+                }
+
+                Button {
+                    text: "Settings";
+                    clicked => {
+                        settings.show();
+                    }
                 }
 
                 Button {
@@ -187,6 +220,86 @@ export component AppWindow inherits Window {
                         }
                         accepted => {
                             root.figuring-accepted(self.text);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    settings := PopupWindow {
+        x: root.width - 330px;
+        y: 44px;
+        width: 310px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: white;
+            border-width: 1px;
+            border-color: #cccccc;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Settings";
+                    font-weight: 600;
+                }
+
+                CheckBox {
+                    text: "Show leading-tone hints";
+                    checked <=> root.show-hints;
+                    toggled => {
+                        root.preferences-changed();
+                    }
+                }
+
+                CheckBox {
+                    text: "Retune diapasons to the key";
+                    checked <=> root.retune-diapasons;
+                    toggled => {
+                        root.preferences-changed();
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Left-hand fret span";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 2;
+                        maximum: 6;
+                        value <=> root.fret-span;
+                        edited(value) => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Fingerings to cycle with [ and ]";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 1;
+                        maximum: 50;
+                        value <=> root.candidates-to-cycle;
+                        edited(value) => {
+                            root.preferences-changed();
                         }
                     }
                 }

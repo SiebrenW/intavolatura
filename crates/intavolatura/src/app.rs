@@ -1,6 +1,6 @@
 //! Application state and its response to input, independent of Slint.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use intavolatura_core::file_format::{self, Document};
 use intavolatura_core::{
@@ -8,6 +8,7 @@ use intavolatura_core::{
     realize,
 };
 
+use crate::preferences::Preferences;
 use crate::view::{self, ColumnHit, Columns, TablatureStyle, ViewOptions};
 
 /// Keys the app reacts to, decoupled from the toolkit's key codes.
@@ -41,6 +42,8 @@ pub struct App {
     pub selected: Option<usize>,
     pub editing: bool,
     pub path: Option<PathBuf>,
+    /// The bass line as last opened or saved, to tell whether it changed.
+    saved: BassLine,
     pub status: String,
 }
 
@@ -60,9 +63,11 @@ impl App {
             tablature: TablatureStyle::Italian,
             realizations: Vec::new(),
             editing: false,
+            saved: BassLine::new(key),
             path,
             status: String::new(),
         };
+        app.saved = app.line().clone();
         app.update_realizations();
         app
     }
@@ -75,6 +80,74 @@ impl App {
             },
             None,
         )
+    }
+
+    /// Opens a saved bass line.
+    pub fn open(path: &Path) -> Result<App, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let document = file_format::read(&text).map_err(|e| e.to_string())?;
+        Ok(App::new(document, Some(path.to_path_buf())))
+    }
+
+    /// Writes the bass line to `path`, which becomes the file being edited.
+    pub fn save_to(&mut self, path: PathBuf) -> bool {
+        let document = Document {
+            line: self.line().clone(),
+            instrument: self.instrument.clone(),
+        };
+        match std::fs::write(&path, file_format::write(&document)) {
+            Ok(()) => {
+                self.status = format!("Saved {}", path.display());
+                self.saved = self.line().clone();
+                self.path = Some(path);
+                true
+            }
+            Err(e) => {
+                self.status = format!("Could not save {}: {e}", path.display());
+                false
+            }
+        }
+    }
+
+    /// Whether the bass line differs from the file it was opened from or
+    /// last saved to.
+    pub fn is_modified(&self) -> bool {
+        *self.line() != self.saved
+    }
+
+    /// The window title: file name, a dot when modified, the app name.
+    pub fn title(&self) -> String {
+        let name = self
+            .path
+            .as_deref()
+            .and_then(Path::file_name)
+            .map_or("Untitled".into(), |n| n.to_string_lossy());
+        let modified = if self.is_modified() { " •" } else { "" };
+        format!("{name}{modified} — Intavolatura")
+    }
+
+    pub fn preferences(&self) -> Preferences {
+        Preferences {
+            tablature: self.tablature,
+            show_hints: self.show_hints,
+            retune_diapasons: self.settings.retune_diapasons,
+            fret_span: self.settings.hand.fret_span,
+            candidates_to_cycle: self.settings.candidates_to_cycle,
+        }
+    }
+
+    /// Applies new preferences, recomputing every realization if the
+    /// fingering settings changed.
+    pub fn set_preferences(&mut self, preferences: &Preferences) {
+        self.tablature = preferences.tablature;
+        self.show_hints = preferences.show_hints;
+        let settings = preferences.settings();
+        if settings != self.settings {
+            self.settings = settings;
+            self.tuned = self.settings.tune(&self.instrument, self.tuned_for);
+            self.realizations.clear();
+            self.update_realizations();
+        }
     }
 
     pub fn line(&self) -> &BassLine {
@@ -145,10 +218,6 @@ impl App {
                 Input::Char('Z') => self.edit(|e| e.redo()),
                 Input::Char('z') => self.edit(|e| e.undo()),
                 Input::Char('y') => self.edit(|e| e.redo()),
-                Input::Char('s') => {
-                    self.save();
-                    true
-                }
                 _ => false,
             };
         }
@@ -245,21 +314,6 @@ impl App {
 
     pub fn set_key(&mut self, key: Key) {
         self.edit(|e| e.set_key(key));
-    }
-
-    fn save(&mut self) {
-        let Some(path) = &self.path else {
-            self.status = "Start with a file path to save (intavolatura <file>)".to_string();
-            return;
-        };
-        let document = Document {
-            line: self.line().clone(),
-            instrument: self.instrument.clone(),
-        };
-        self.status = match std::fs::write(path, file_format::write(&document)) {
-            Ok(()) => format!("Saved {}", path.display()),
-            Err(e) => format!("Could not save: {e}"),
-        };
     }
 
     fn edit(&mut self, change: impl FnOnce(&mut Editor) -> bool) -> bool {
@@ -386,6 +440,40 @@ mod tests {
         assert!(app.line().notes()[0].pin.is_some());
         app.key(Input::Char('['), false, false);
         assert!(app.line().notes()[0].pin.is_none());
+    }
+
+    #[test]
+    fn saving_clears_the_modified_mark() {
+        let dir = std::env::temp_dir().join(format!("intavolatura-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("line.intav");
+
+        let mut app = app();
+        assert!(!app.is_modified());
+        assert!(app.title().starts_with("Untitled —"));
+        app.click(app.columns().center(0), y(22));
+        assert!(app.is_modified());
+        assert!(app.title().starts_with("Untitled •"));
+
+        assert!(app.save_to(path.clone()));
+        assert!(!app.is_modified());
+        assert!(app.title().starts_with("line.intav —"));
+
+        let reopened = App::open(&path).unwrap();
+        assert_eq!(reopened.line(), app.line());
+        assert!(!reopened.is_modified());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn preferences_change_what_is_found() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(19)); // A2
+        let mut preferences = app.preferences();
+        preferences.candidates_to_cycle = 2;
+        app.set_preferences(&preferences);
+        assert_eq!(app.realizations[0].2.candidates.len(), 2);
+        assert_eq!(app.preferences(), preferences);
     }
 
     #[test]

@@ -1,105 +1,245 @@
 //! Connects the app state to the Slint window.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::Key;
+use intavolatura_core::{Figuring, Key};
+use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::app::{App, Input};
+use crate::preferences::Preferences;
 use crate::view::{self, TablatureStyle};
 use crate::{AppWindow, Bar, Glyph};
 
+const FILE_TYPE: (&str, &[&str]) = ("Intavolatura bass line", &["intav"]);
+
+/// The window, the app state and the key list, shared by every callback.
+#[derive(Clone)]
+struct Shared {
+    window: Weak<AppWindow>,
+    app: Rc<RefCell<App>>,
+    keys: Rc<[Key]>,
+}
+
+impl Shared {
+    /// Runs `f` on the app, then redraws the window.
+    fn update<R>(&self, f: impl FnOnce(&AppWindow, &mut App) -> R) -> R {
+        let window = self.window.unwrap();
+        let mut app = self.app.borrow_mut();
+        let result = f(&window, &mut app);
+        refresh(&window, &app, &self.keys);
+        result
+    }
+}
+
 /// Fills the window from `app` and connects every callback to it.
 pub fn wire(window: &AppWindow, app: App) {
-    let keys: Vec<Key> = Key::all().collect();
+    let keys: Rc<[Key]> = Key::all().collect();
     let key_names: Vec<SharedString> = keys.iter().map(|k| k.to_string().into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
 
-    let app = Rc::new(RefCell::new(app));
-    refresh(window, &app.borrow(), &keys);
+    let shared = Shared {
+        window: window.as_weak(),
+        app: Rc::new(RefCell::new(app)),
+        keys,
+    };
+    refresh(window, &shared.app.borrow(), &shared.keys);
 
-    let weak = window.as_weak();
-    let state = app.clone();
-    let all_keys = keys.clone();
+    let s = shared.clone();
     window.on_key(move |text, shift, command| {
-        let window = weak.unwrap();
         let Some(input) = input(&text) else {
             return false;
         };
-        let mut app = state.borrow_mut();
-        let was_editing = app.editing;
-        let handled = app.key(input, shift, command);
-        if app.editing && !was_editing {
-            start_editing(&window, &app);
-        } else if was_editing && !app.editing {
-            window.invoke_focus_main();
+        if command && !s.app.borrow().editing {
+            match input {
+                Input::Char('o') => return open_file(&s),
+                Input::Char('s') => return save_file(&s, shift),
+                Input::Char('S') => return save_file(&s, true),
+                _ => {}
+            }
         }
-        refresh(&window, &app, &all_keys);
-        handled
+        s.update(|window, app| {
+            let was_editing = app.editing;
+            let handled = app.key(input, shift, command);
+            if app.editing && !was_editing {
+                start_editing(window, app);
+            } else if was_editing && !app.editing {
+                window.invoke_focus_main();
+            }
+            handled
+        })
     });
 
-    let weak = window.as_weak();
-    let state = app.clone();
-    let all_keys = keys.clone();
+    let s = shared.clone();
     window.on_clicked(move |x, y| {
-        let window = weak.unwrap();
-        let mut app = state.borrow_mut();
-        if app.click(x, y) {
-            start_editing(&window, &app);
-        } else {
-            window.invoke_focus_main();
-        }
-        refresh(&window, &app, &all_keys);
+        s.update(|window, app| {
+            if app.click(x, y) {
+                start_editing(window, app);
+            } else {
+                window.invoke_focus_main();
+            }
+        })
     });
 
-    let weak = window.as_weak();
-    let state = app.clone();
-    let all_keys = keys.clone();
+    let s = shared.clone();
     window.on_key_selected(move |index| {
-        let window = weak.unwrap();
-        let mut app = state.borrow_mut();
-        if let Some(&key) = all_keys.get(index as usize) {
-            app.set_key(key);
-        }
-        refresh(&window, &app, &all_keys);
+        let key = s.keys.get(index as usize).copied();
+        s.update(|_, app| {
+            if let Some(key) = key {
+                app.set_key(key);
+            }
+        })
     });
 
-    let weak = window.as_weak();
-    let state = app.clone();
-    let all_keys = keys.clone();
+    let s = shared.clone();
     window.on_tablature_selected(move |index| {
-        let window = weak.unwrap();
-        let mut app = state.borrow_mut();
-        app.tablature = if index == 1 {
-            TablatureStyle::French
-        } else {
-            TablatureStyle::Italian
-        };
-        refresh(&window, &app, &all_keys);
+        s.update(|_, app| {
+            let mut preferences = app.preferences();
+            preferences.tablature = if index == 1 {
+                TablatureStyle::French
+            } else {
+                TablatureStyle::Italian
+            };
+            apply_preferences(app, &preferences);
+        })
+    });
+
+    let s = shared.clone();
+    window.on_preferences_changed(move || {
+        s.update(|window, app| {
+            let preferences = Preferences {
+                show_hints: window.get_show_hints(),
+                retune_diapasons: window.get_retune_diapasons(),
+                fret_span: window.get_fret_span().clamp(2, 6) as u8,
+                candidates_to_cycle: window.get_candidates_to_cycle().clamp(1, 50) as usize,
+                ..app.preferences()
+            };
+            apply_preferences(app, &preferences);
+        })
+    });
+
+    let s = shared.clone();
+    window.on_open_file(move || {
+        open_file(&s);
+    });
+
+    let s = shared.clone();
+    window.on_save_file(move || {
+        save_file(&s, false);
     });
 
     let weak = window.as_weak();
     window.on_figuring_edited(move |text| {
-        let window = weak.unwrap();
-        window.set_figuring_error(text.parse::<intavolatura_core::Figuring>().is_err());
+        weak.unwrap()
+            .set_figuring_error(text.parse::<Figuring>().is_err());
     });
 
-    let weak = window.as_weak();
-    let state = app.clone();
-    let all_keys = keys;
+    let s = shared.clone();
     window.on_figuring_accepted(move |text| {
-        let window = weak.unwrap();
-        let mut app = state.borrow_mut();
-        if app.accept_figuring(&text) {
-            window.invoke_focus_main();
-        } else {
-            window.set_figuring_error(true);
-        }
-        refresh(&window, &app, &all_keys);
+        s.update(|window, app| {
+            if app.accept_figuring(&text) {
+                window.invoke_focus_main();
+            } else {
+                window.set_figuring_error(true);
+            }
+        })
     });
+
+    let s = shared;
+    window.window().on_close_requested(move || {
+        if confirm_discard(&s.app.borrow()) {
+            CloseRequestResponse::HideWindow
+        } else {
+            CloseRequestResponse::KeepWindowShown
+        }
+    });
+}
+
+/// Applies and stores new preferences; a failure to store is shown, not fatal.
+fn apply_preferences(app: &mut App, preferences: &Preferences) {
+    app.set_preferences(preferences);
+    if let Err(e) = preferences.save() {
+        app.status = format!("Could not save settings: {e}");
+    }
+}
+
+/// Asks whether unsaved changes may be thrown away; true if there are none.
+fn confirm_discard(app: &App) -> bool {
+    !app.is_modified()
+        || MessageDialog::new()
+            .set_level(MessageLevel::Warning)
+            .set_title("Unsaved changes")
+            .set_description("The bass line has unsaved changes. Discard them?")
+            .set_buttons(MessageButtons::OkCancelCustom(
+                "Discard".into(),
+                "Cancel".into(),
+            ))
+            .show()
+            == MessageDialogResult::Custom("Discard".into())
+}
+
+/// Lets the user pick a file and opens it, keeping the current preferences.
+fn open_file(s: &Shared) -> bool {
+    // No borrow is held while a dialog runs its own event loop.
+    if !confirm_discard(&s.app.borrow()) {
+        return true;
+    }
+    let start = s
+        .app
+        .borrow()
+        .path
+        .as_ref()
+        .and_then(|p| p.parent().map(PathBuf::from));
+    let mut dialog = FileDialog::new().add_filter(FILE_TYPE.0, FILE_TYPE.1);
+    if let Some(dir) = start {
+        dialog = dialog.set_directory(dir);
+    }
+    let Some(path) = dialog.pick_file() else {
+        return true;
+    };
+    s.update(|window, app| match App::open(&path) {
+        Ok(mut opened) => {
+            opened.set_preferences(&app.preferences());
+            *app = opened;
+            window.set_scroll_x(0.0);
+        }
+        Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
+    });
+    true
+}
+
+/// Saves to the current file, asking for one if there is none or `ask`.
+fn save_file(s: &Shared, ask: bool) -> bool {
+    let current = s.app.borrow().path.clone();
+    let path = match current {
+        Some(path) if !ask => Some(path),
+        current => {
+            let name = current
+                .as_deref()
+                .and_then(|p| p.file_name())
+                .map_or("Untitled.intav".into(), |n| {
+                    n.to_string_lossy().into_owned()
+                });
+            let mut dialog = FileDialog::new()
+                .add_filter(FILE_TYPE.0, FILE_TYPE.1)
+                .set_file_name(name);
+            if let Some(dir) = current.as_deref().and_then(|p| p.parent()) {
+                dialog = dialog.set_directory(dir);
+            }
+            dialog.save_file()
+        }
+    };
+    if let Some(mut path) = path {
+        if path.extension().is_none() {
+            path.set_extension("intav");
+        }
+        s.update(|_, app| app.save_to(path));
+    }
+    true
 }
 
 /// Translates Slint's key text into the app's inputs.
@@ -164,9 +304,16 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_bars(ModelRc::new(VecModel::from(bars)));
     window.set_content_width(scene.width);
     window.set_content_height(scene.height);
+    window.set_window_title(app.title().into());
+
+    let preferences = app.preferences();
+    window.set_tablature_index(i32::from(preferences.tablature == TablatureStyle::French));
+    window.set_show_hints(preferences.show_hints);
+    window.set_retune_diapasons(preferences.retune_diapasons);
+    window.set_fret_span(preferences.fret_span.into());
+    window.set_candidates_to_cycle(preferences.candidates_to_cycle as i32);
 
     let key = app.line().key();
-    window.set_tablature_index(i32::from(app.tablature == TablatureStyle::French));
     window.set_key_index(keys.iter().position(|&k| k == key).unwrap_or(0) as i32);
 
     let columns = app.columns();

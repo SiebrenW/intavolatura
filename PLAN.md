@@ -20,7 +20,7 @@ Each step is buildable and tested before the next starts.
 10. [x] **File format**: save/load the app's own text format.
 11. [x] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown. Check layout offscreen with `cargo run -p intavolatura --example screenshot -- <file.intav> <out.png> [selected] [scale]`.
 12. [x] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
-13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
+13. [x] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
 
 ## Features
 
@@ -33,12 +33,12 @@ Each step is buildable and tested before the next starts.
   - [x] Delete/Backspace removes the selected bass note and its figuring
   - [x] Enter edits the column's figuring box; Esc returns to the column
   - [x] Undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) for every change: notes, figurings, pins, key
-- [ ] Figuring input
+- [x] Figuring input
   - [x] Supported figurings: empty/5/3/5-3, 6, 6/3, 6/4, 7, 7/5/3, 6/5, 4/3, 6/4/3, 4/2, 2, 6/4/2
   - [x] Accidentals on any figure (♯ ♭ ♮), raised figures (6+, slashed 6); a lone accidental applies to the 3rd
   - [x] Figures are literal: always within the key unless an accidental says otherwise
   - [x] Displayed with proper symbols, highest figure on top
-  - [ ] Leading-tone hint: faded (♯) in minor where a raised 3rd is likely but unmarked; can be disabled in settings
+  - [x] Leading-tone hint: faded (♯) in minor where a raised 3rd is likely but unmarked; can be disabled in settings
 - [x] Fingering generation
   - [x] Generate all candidate fingerings for each chord on the current instrument
   - [x] Show the top-ranked candidate; `[` / `]` cycle through the top N and pin the choice (N is a setting, default 10)
@@ -50,7 +50,8 @@ Each step is buildable and tested before the next starts.
   - [x] Tablature in Italian or French style (setting)
   - [x] Long bass lines scroll horizontally; no system breaks
 - [ ] Files
-  - [ ] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. For now: open by passing a path (`intavolatura <file>`), Ctrl/Cmd+S saves to it; file dialogs still to do
+  - [x] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. Open/Save buttons and Ctrl/Cmd+O, Ctrl/Cmd+S, Ctrl/Cmd+Shift+S with native dialogs; a path on the command line opens that file
+  - [x] The window title marks unsaved changes; opening another file or closing asks before discarding them
   - [x] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
   - [ ] Later: MusicXML import/export
 
@@ -136,6 +137,12 @@ Optimisation is a first-class goal, not an afterthought.
 - Fast startup.
 - Modest resource usage (CPU, memory, disk) out of respect for the user's machine.
 - The fingering search is the likely hot path; benchmark it in the core crate.
+- Measure startup with `INTAVOLATURA_STARTUP_CHECK=1 target/release/intavolatura <file>`: prints the time to the first frame and quits. Wrap in `/usr/bin/time -l` for peak memory.
+- Measured 2026-10-07 on macOS (Apple silicon), release build: first frame ~140 ms warm (~180-260 ms cold), ~100 MB resident with the default OpenGL renderer (mostly the GPU stack; the software renderer used more at Retina scale), 12 MB stripped binary. Fingering search ~33 µs per chord.
+
+## Settings
+
+Kept in `preferences.txt` in the platform's config directory (macOS `~/Library/Application Support/Intavolatura`, Windows `%APPDATA%\Intavolatura`, Linux `$XDG_CONFIG_HOME/intavolatura`): tablature style, leading-tone hints, diapason retuning, left-hand fret span (2–6), fingerings to cycle (1–50).
 
 ## Platforms
 
