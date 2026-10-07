@@ -4,3 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+roxmltree = "0.21.1"
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

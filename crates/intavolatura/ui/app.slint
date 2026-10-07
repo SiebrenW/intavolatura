@@ -1,4 +1,4 @@
-import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette } from "std-widgets.slint";
+import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette, ScrollView } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
 import { KeyPicker } from "key_picker.slint";
 import { ShortcutsPanel } from "help.slint";
@@ -120,7 +120,19 @@ export component AppWindow inherits Window {
     callback save-file();
     // MusicXML export: with the realization part, or the figured bass only.
     callback export-file(bool);
+    // MusicXML import: the parts to choose from, and what changed.
+    in property <[string]> import-parts;
+    in property <[string]> import-changes;
+    callback import-part(int);
     callback preferences-changed();
+
+    public function choose-import-part() {
+        import-parts-popup.show();
+    }
+
+    public function show-import-report() {
+        import-report.show();
+    }
 
     public function show-shortcuts() {
         shortcuts.show();
@@ -477,6 +489,94 @@ export component AppWindow inherits Window {
                         edited(value) => {
                             root.preferences-changed();
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    import-parts-popup := PopupWindow {
+        x: 60px;
+        y: 44px;
+        width: 360px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 6px;
+
+                Text {
+                    text: "Import which part?";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                Text {
+                    text: "The bass line and its figures are read from the part you choose.";
+                    wrap: word-wrap;
+                    color: root.muted;
+                }
+
+                for name[i] in root.import-parts: Button {
+                    text: name;
+                    clicked => {
+                        import-parts-popup.close();
+                        root.import-part(i);
+                        main.focus();
+                    }
+                }
+            }
+        }
+    }
+
+    import-report := PopupWindow {
+        x: 60px;
+        y: 44px;
+        width: 520px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 6px;
+
+                Text {
+                    text: "Changed while importing";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                ScrollView {
+                    height: min(320px, root.import-changes.length * 24px + 8px);
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        for change in root.import-changes: Text {
+                            text: "• " + change;
+                            wrap: word-wrap;
+                            color: root.ink;
+                        }
+                    }
+                }
+
+                Button {
+                    text: "OK";
+                    clicked => {
+                        import-report.close();
+                        main.focus();
                     }
                 }
             }

@@ -1,5 +1,5 @@
 //! Renders the window offscreen to a PNG, for checking the layout without
-//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark] [keys] [help]`
+//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark] [keys] [help] [import] [report]`
 
 use std::rc::Rc;
 
@@ -63,6 +63,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if shortcuts {
         ui.invoke_show_shortcuts();
+    }
+    if options.iter().any(|s| s == "import") {
+        let parts: Vec<slint::SharedString> = ["Violino I", "Canto", "Basso continuo · figured"]
+            .map(Into::into)
+            .to_vec();
+        ui.set_import_parts(slint::ModelRc::new(slint::VecModel::from(parts)));
+        ui.invoke_choose_import_part();
+    }
+    if options.iter().any(|s| s == "report") {
+        let changes: Vec<slint::SharedString> = [
+            "Bar 0 is an upbeat; the app has none, so bar lines may shift.",
+            "12 chord notes dropped; the lowest note of each chord is kept.",
+            "Bar 14: the figures \"9 7\" under G2 are not supported; left empty.",
+        ]
+        .map(Into::into)
+        .to_vec();
+        ui.set_import_changes(slint::ModelRc::new(slint::VecModel::from(changes)));
+        ui.invoke_show_import_report();
     }
     slint::platform::update_timers_and_animations();
 

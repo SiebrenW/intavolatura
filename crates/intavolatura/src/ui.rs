@@ -9,6 +9,8 @@ use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, Messag
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
+use intavolatura_core::musicxml::{self, PartInfo};
+
 use crate::app::{App, Input};
 use crate::preferences::{Preferences, Theme};
 use crate::view::{self, TablatureStyle};
@@ -22,6 +24,8 @@ struct Shared {
     window: Weak<AppWindow>,
     app: Rc<RefCell<App>>,
     keys: Rc<[Key]>,
+    /// A MusicXML score waiting for its part to be chosen: text, file, parts.
+    import: Rc<RefCell<Option<(String, PathBuf, Vec<PartInfo>)>>>,
 }
 
 impl Shared {
@@ -63,6 +67,7 @@ pub fn wire(window: &AppWindow, app: App) {
         window: window.as_weak(),
         app: Rc::new(RefCell::new(app)),
         keys,
+        import: Rc::new(RefCell::new(None)),
     };
     refresh(window, &shared.app.borrow(), &shared.keys);
 
@@ -189,6 +194,9 @@ pub fn wire(window: &AppWindow, app: App) {
     });
 
     let s = shared.clone();
+    window.on_import_part(move |index| import_part(&s, index as usize));
+
+    let s = shared.clone();
     window.on_save_file(move || {
         save_file(&s, false);
     });
@@ -280,13 +288,48 @@ fn open_file(s: &Shared) -> bool {
         .path
         .as_ref()
         .and_then(|p| p.parent().map(PathBuf::from));
-    let mut dialog = FileDialog::new().add_filter(FILE_TYPE.0, FILE_TYPE.1);
+    let mut dialog = FileDialog::new()
+        .add_filter(
+            "Bass lines and MusicXML",
+            &["intav", "musicxml", "xml", "mxl"],
+        )
+        .add_filter(FILE_TYPE.0, FILE_TYPE.1)
+        .add_filter("MusicXML", &["musicxml", "xml", "mxl"]);
     if let Some(dir) = start {
         dialog = dialog.set_directory(dir);
     }
     let Some(path) = dialog.pick_file() else {
         return true;
     };
+    let is_musicxml = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| ["musicxml", "xml", "mxl"].contains(&e.to_ascii_lowercase().as_str()));
+    if is_musicxml {
+        let read = musicxml::read_file(&path).and_then(|xml| Ok((musicxml::parts(&xml)?, xml)));
+        match read {
+            Ok((parts, _)) if parts.is_empty() => {
+                s.update(|_, app| app.status = format!("{} has no parts", path.display()));
+            }
+            Ok((parts, xml)) => {
+                let window = s.window.unwrap();
+                let names: Vec<SharedString> = parts
+                    .iter()
+                    .map(|p| {
+                        let figured = if p.has_figures { " · figured" } else { "" };
+                        format!("{}{figured}", p.name).into()
+                    })
+                    .collect();
+                window.set_import_parts(ModelRc::new(VecModel::from(names)));
+                *s.import.borrow_mut() = Some((xml, path, parts));
+                window.invoke_choose_import_part();
+            }
+            Err(e) => {
+                s.update(|_, app| app.status = format!("Could not read {}: {e}", path.display()))
+            }
+        }
+        return true;
+    }
     s.update(|window, app| match App::open(&path) {
         Ok(mut opened) => {
             opened.set_preferences(&app.preferences());
@@ -296,6 +339,42 @@ fn open_file(s: &Shared) -> bool {
         Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
     });
     true
+}
+
+/// Imports the chosen part of the waiting MusicXML score as a new, unsaved
+/// bass line, and shows what had to change.
+fn import_part(s: &Shared, index: usize) {
+    let Some((xml, path, parts)) = s.import.borrow_mut().take() else {
+        return;
+    };
+    let Some(part) = parts.get(index) else {
+        return;
+    };
+    s.update(|window, app| match musicxml::import(&xml, &part.id) {
+        Ok(imported) => {
+            let mut opened = App::new(imported.document, None);
+            opened.set_preferences(&app.preferences());
+            let file = path
+                .file_name()
+                .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+            opened.status = match imported.changes.len() {
+                0 => format!("Imported {} from {file}", part.name),
+                n => format!("Imported {} from {file} with {n} changes", part.name),
+            };
+            *app = opened;
+            window.set_scroll_x(0.0);
+            if !imported.changes.is_empty() {
+                let changes: Vec<SharedString> = imported
+                    .changes
+                    .into_iter()
+                    .map(SharedString::from)
+                    .collect();
+                window.set_import_changes(ModelRc::new(VecModel::from(changes)));
+                window.invoke_show_import_report();
+            }
+        }
+        Err(e) => app.status = format!("Could not import {}: {e}", part.name),
+    });
 }
 
 /// Saves to the current file, asking for one if there is none or `ask`.
