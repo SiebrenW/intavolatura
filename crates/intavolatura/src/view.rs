@@ -18,7 +18,7 @@ const LINE: f32 = 1.0;
 
 pub const COLUMN_WIDTH: f32 = 64.0;
 const KEY_SIGNATURE_X: f32 = 52.0;
-const KEY_SIGNATURE_STEP: f32 = 10.0;
+const KEY_SIGNATURE_STEP: f32 = 11.5;
 
 /// Staff position (see `Pitch::staff_position`) of each staff's top line.
 const BASS_TOP_POSITION: i16 = 26; // A3

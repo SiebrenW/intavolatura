@@ -1,5 +1,5 @@
 //! Renders the window offscreen to a PNG, for checking the layout without
-//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark]`
+//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark] [keys]`
 
 use std::rc::Rc;
 
@@ -22,7 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [input, output, rest @ ..] = &args[..] else {
         return Err(
-            "usage: screenshot <file.intav> <out.png> [selected] [scale] [french] [dark]".into(),
+            "usage: screenshot <file.intav> <out.png> [selected] [scale] [french] [dark] [keys]"
+                .into(),
         );
     };
     let selected: Option<usize> = rest.first().and_then(|s| s.parse().ok());
@@ -30,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = &rest[rest.len().min(2)..];
     let french = options.iter().any(|s| s == "french");
     let dark = options.iter().any(|s| s == "dark");
+    let key_picker = options.iter().any(|s| s == "keys");
 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(Offscreen(window.clone())))
@@ -55,6 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     window.set_size(PhysicalSize::new(width, height));
     ui.show()?;
+    if key_picker {
+        ui.invoke_open_key_picker();
+    }
     slint::platform::update_timers_and_animations();
 
     let mut pixels = vec![Rgb8Pixel::new(0, 0, 0); (width * height) as usize];

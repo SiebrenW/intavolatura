@@ -38,7 +38,7 @@ impl Shared {
 /// Fills the window from `app` and connects every callback to it.
 pub fn wire(window: &AppWindow, app: App) {
     let keys: Rc<[Key]> = Key::all().collect();
-    let key_names: Vec<SharedString> = keys.iter().map(|&k| key_label(k).into()).collect();
+    let key_names: Vec<SharedString> = keys.iter().map(|&k| key_name(k).into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
 
@@ -163,8 +163,18 @@ pub fn wire(window: &AppWindow, app: App) {
     });
 }
 
-/// A key with its signature, as listed in the key picker: `B♭ major · 2♭`.
+/// A key with its signature, as shown on the key picker: `B♭ major · 2♭`.
 fn key_label(key: Key) -> String {
+    let signature = match key.signature() {
+        0 => "no ♯/♭".to_string(),
+        n if n > 0 => format!("{n}♯"),
+        n => format!("{}♭", -n),
+    };
+    format!("{} · {signature}", key_name(key))
+}
+
+/// A key with proper accidentals: `B♭ major`.
+fn key_name(key: Key) -> String {
     let tonic = key.tonic();
     let accidental = match tonic.accidental.semitones() {
         -1 => "♭",
@@ -175,15 +185,7 @@ fn key_label(key: Key) -> String {
         Mode::Major => "major",
         Mode::Minor => "minor",
     };
-    let signature = match key.signature() {
-        0 => "no ♯/♭".to_string(),
-        n if n > 0 => format!("{n}♯"),
-        n => format!("{}♭", -n),
-    };
-    format!(
-        "{}{accidental} {mode} · {signature}",
-        tonic.letter.as_char()
-    )
+    format!("{}{accidental} {mode}", tonic.letter.as_char())
 }
 
 /// Applies and stores new preferences; a failure to store is shown, not fatal.
@@ -347,6 +349,7 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
 
     let key = app.line().key();
     window.set_key_index(keys.iter().position(|&k| k == key).unwrap_or(0) as i32);
+    window.set_key_label(key_label(key).into());
 
     let columns = app.columns();
     window.set_has_selection(app.selected.is_some());

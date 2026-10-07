@@ -1,0 +1,203 @@
+import { Button } from "std-widgets.slint";
+
+// A key signature on a G clef and an F clef, drawn in Bravura.
+component SignaturePreview inherits Rectangle {
+    // Sharps (positive) or flats (negative).
+    in property <int> signature;
+    in property <color> ink;
+
+    property <length> space: 8px;
+    property <length> treble-top: 26px;
+    property <length> bass-top: self.treble-top + 10 * self.space;
+    // Staff positions (C0 = 0) on the bass staff; the treble staff is two octaves higher.
+    property <[int]> sharps: [24, 21, 25, 22, 19, 23, 20];
+    property <[int]> flats: [20, 23, 19, 22, 18, 21, 17];
+
+    width: 150px;
+    height: self.bass-top + 4 * self.space + 26px;
+
+    for line in 5: Rectangle {
+        x: 0;
+        y: root.treble-top + line * root.space;
+        width: root.width;
+        height: 1px;
+        background: root.ink;
+    }
+
+    for line in 5: Rectangle {
+        x: 0;
+        y: root.bass-top + line * root.space;
+        width: root.width;
+        height: 1px;
+        background: root.ink;
+    }
+
+    Rectangle {
+        x: 0;
+        y: root.treble-top;
+        width: 1.5px;
+        height: root.bass-top + 4 * root.space - root.treble-top;
+        background: root.ink;
+    }
+
+    // G clef on G4, F clef on F3. Bravura's line box is centred on the baseline.
+    Text {
+        x: 0;
+        y: root.treble-top + 3 * root.space - 32px;
+        width: 40px;
+        height: 64px;
+        text: "\u{E050}";
+        font-family: "Bravura";
+        font-size: 4 * root.space;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: root.ink;
+    }
+
+    Text {
+        x: 0;
+        y: root.bass-top + root.space - 32px;
+        width: 40px;
+        height: 64px;
+        text: "\u{E062}";
+        font-family: "Bravura";
+        font-size: 4 * root.space;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: root.ink;
+    }
+
+    for i in 7: Text {
+        visible: i < abs(root.signature);
+        x: 42px + i * 10px - 20px;
+        y: root.treble-top + (24 - (root.signature > 0 ? root.sharps[i] : root.flats[i])) * root.space / 2 - 32px;
+        width: 40px;
+        height: 64px;
+        text: root.signature > 0 ? "\u{E262}" : "\u{E260}";
+        font-family: "Bravura";
+        font-size: 4 * root.space;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: root.ink;
+    }
+
+    for i in 7: Text {
+        visible: i < abs(root.signature);
+        x: 42px + i * 10px - 20px;
+        y: root.bass-top + (26 - (root.signature > 0 ? root.sharps[i] : root.flats[i])) * root.space / 2 - 32px;
+        width: 40px;
+        height: 64px;
+        text: root.signature > 0 ? "\u{E262}" : "\u{E260}";
+        font-family: "Bravura";
+        font-size: 4 * root.space;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: root.ink;
+    }
+}
+
+// A button showing the current key that opens a grid of all keys, ordered
+// by signature with each major key beside its relative minor, and a preview
+// of the signature under the mouse.
+export component KeyPicker inherits Rectangle {
+    // Key names in `Key::all()` order: signature -7 to 7, major then minor.
+    in property <[string]> names;
+    in property <int> current;
+    in property <string> label;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> panel;
+    in property <color> panel-border;
+    in property <color> highlight;
+
+    callback selected(int);
+
+    property <int> previewed: root.current;
+
+    public function open() {
+        root.previewed = root.current;
+        popup.show();
+    }
+
+    Button {
+        width: root.width;
+        height: root.height;
+        text: root.label;
+        clicked => {
+            root.open();
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: 480px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            HorizontalLayout {
+                padding: 10px;
+                spacing: 14px;
+
+                VerticalLayout {
+                    for row in 15: HorizontalLayout {
+                        height: 22px;
+
+                        Text {
+                            width: 44px;
+                            text: row == 7 ? "–" : abs(row - 7) + (row < 7 ? "♭" : "♯");
+                            vertical-alignment: center;
+                            color: root.muted;
+                        }
+
+                        for column in 2: Rectangle {
+                            property <int> index: row * 2 + column;
+
+                            width: 120px;
+                            border-radius: 3px;
+                            background: self.index == root.current ? root.highlight : area.has-hover ? root.highlight.with-alpha(0.5) : transparent;
+
+                            Text {
+                                x: 6px;
+                                text: root.names[parent.index];
+                                vertical-alignment: center;
+                                color: root.ink;
+                            }
+
+                            area := TouchArea {
+                                changed has-hover => {
+                                    root.previewed = self.has-hover ? parent.index : root.current;
+                                }
+                                clicked => {
+                                    root.selected(parent.index);
+                                    popup.close();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: start;
+                    spacing: 4px;
+
+                    Text {
+                        text: root.names[root.previewed];
+                        font-weight: 600;
+                        color: root.ink;
+                    }
+
+                    SignaturePreview {
+                        signature: floor(root.previewed / 2) - 7;
+                        ink: root.ink;
+                    }
+                }
+            }
+        }
+    }
+}

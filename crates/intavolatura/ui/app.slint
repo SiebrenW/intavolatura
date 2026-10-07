@@ -1,5 +1,6 @@
 import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
+import { KeyPicker } from "key_picker.slint";
 
 // Text centred on (x, y); see `view.rs`.
 export struct Glyph {
@@ -58,7 +59,9 @@ export component AppWindow inherits Window {
     in property <[Bar]> bars;
     in property <length> content-width;
     in property <length> content-height;
+    // Key names in `Key::all()` order, and the current key with its signature.
     in property <[string]> keys;
+    in property <string> key-label;
     in-out property <int> key-index;
     in-out property <int> tablature-index;
     in property <bool> has-selection;
@@ -91,6 +94,10 @@ export component AppWindow inherits Window {
     callback save-file();
     callback preferences-changed();
 
+    public function open-key-picker() {
+        key-picker.open();
+    }
+
     public function focus-main() {
         main.focus();
     }
@@ -119,12 +126,18 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                 }
 
-                ComboBox {
+                key-picker := KeyPicker {
                     width: 200px;
-                    model: root.keys;
-                    current-index <=> root.key-index;
-                    selected => {
-                        root.key-selected(self.current-index);
+                    names: root.keys;
+                    current: root.key-index;
+                    label: root.key-label;
+                    ink: root.ink;
+                    muted: root.muted;
+                    panel: root.panel;
+                    panel-border: root.panel-border;
+                    highlight: root.highlight;
+                    selected(index) => {
+                        root.key-selected(index);
                         main.focus();
                     }
                 }
