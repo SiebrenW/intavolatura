@@ -41,8 +41,10 @@ export component AppWindow inherits Window {
         Palette.color-scheme = root.theme == 1 ? ColorScheme.light : root.theme == 2 ? ColorScheme.dark : ColorScheme.unknown;
     }
 
-    // Score colours: ink on paper, light or dark with the widgets.
-    property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    // Score colours: ink on paper, light or dark with the widgets. Judged
+    // from the widgets' own background, since the scheme reads as `unknown`
+    // when it follows the system.
+    property <bool> dark: Palette.background.to-hsv().value < 0.5;
     property <color> paper: root.dark ? #1e1c19 : #fbfaf6;
     property <color> ink: root.dark ? #e9e5db : #1d1d1d;
     property <color> faded-ink: root.dark ? #8c8578 : #a09a8c;
