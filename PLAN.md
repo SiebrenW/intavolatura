@@ -69,7 +69,7 @@ Each step is buildable and tested before the next starts.
 
 ## Later
 
-- Rarer figures (9, 9/7, 5/4, ♯4/2, …) and continuation lines.
+- Rarer figure combinations (9/7, 9/4, 7/4, 6/4/2 with a 7, …) and continuation lines.
 - Upbeats, ties across bar lines, time signature changes, uneven suspension splits.
 - Voice leading between chords.
 - More instruments: baroque guitar, renaissance lute in G.
