@@ -48,8 +48,8 @@ pub struct Realization {
     pub chord: Chord,
     /// The best candidates, best first, at most `candidates_to_cycle`.
     pub candidates: Vec<Ranked>,
-    /// The pinned fingering, else the best candidate; `None` when the chord
-    /// cannot be played on this instrument.
+    /// The pinned fingering if it is valid for the chord, else the best
+    /// candidate; `None` when the chord cannot be played on this instrument.
     pub shown: Option<Fingering>,
     /// The voicing of the shown fingering, lowest first.
     pub voicing: Vec<Pitch>,
@@ -64,10 +64,13 @@ pub fn realize(
 ) -> Realization {
     let chord = Chord::new(note.pitch.name, &note.figuring, key);
     let found = candidate_fingerings(instrument, &chord, note.pitch, settings.hand);
+    // A pin loaded from a file or made under other settings may no longer
+    // be a valid fingering of this chord; it is then ignored.
+    let pin = note.pin.filter(|pin| found.contains(pin));
     let mut candidates = rank(found, instrument, &chord, note.pitch, &settings.weights);
     candidates.truncate(settings.candidates_to_cycle.max(1));
 
-    let shown = note.pin.or_else(|| candidates.first().map(|r| r.fingering));
+    let shown = pin.or_else(|| candidates.first().map(|r| r.fingering));
     let voicing = shown.map_or_else(Vec::new, |f| f.voicing(instrument, &chord));
     Realization {
         chord,
@@ -125,6 +128,15 @@ mod tests {
 
         let pin = r.candidates[3].fingering;
         assert_eq!(realized(Some(pin), &settings).shown, Some(pin));
+    }
+
+    #[test]
+    fn an_invalid_pin_is_ignored() {
+        let settings = Settings::default();
+        let mut frets = [None; crate::instrument::MAX_COURSES];
+        frets[0] = Some(1); // A#3: not in the chord.
+        let r = realized(Some(Fingering::from_frets(frets)), &settings);
+        assert_eq!(r.shown, Some(r.candidates[0].fingering));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! Major and minor keys, their key signatures and diatonic stepping.
 
+use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
 
 use crate::pitch::{Accidental, Letter, NoteName, Pitch};
 
@@ -95,6 +97,34 @@ impl fmt::Display for Key {
     }
 }
 
+impl FromStr for Key {
+    type Err = ParseKeyError;
+
+    /// Parses the display form, such as `D minor` or `F# major`.
+    fn from_str(s: &str) -> Result<Key, ParseKeyError> {
+        let (tonic, mode) = s.trim().split_once(' ').ok_or(ParseKeyError)?;
+        let mode = match mode.trim().to_ascii_lowercase().as_str() {
+            "major" => Mode::Major,
+            "minor" => Mode::Minor,
+            _ => return Err(ParseKeyError),
+        };
+        let tonic = tonic.parse().map_err(|_| ParseKeyError)?;
+        Key::new(tonic, mode).ok_or(ParseKeyError)
+    }
+}
+
+/// Error returned when text is not a valid key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParseKeyError;
+
+impl fmt::Display for ParseKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid key")
+    }
+}
+
+impl Error for ParseKeyError {}
+
 /// The note name at a position on the circle of fifths (C = 0, G = 1, F = -1).
 fn name_at_fifths(fifths: i8) -> NoteName {
     // F is the lowest natural at -1; each step of seven adds a sharp.
@@ -168,6 +198,17 @@ mod tests {
         let c_major = key("C", Mode::Major);
         let f_sharp: Pitch = "F#3".parse().unwrap();
         assert_eq!(c_major.step(f_sharp, 1).to_string(), "G3");
+    }
+
+    #[test]
+    fn parses_the_display_form() {
+        for k in Key::all() {
+            assert_eq!(k.to_string().parse::<Key>(), Ok(k));
+        }
+        assert_eq!("d Minor".parse::<Key>(), Ok(key("D", Mode::Minor)));
+        assert!("G# major".parse::<Key>().is_err());
+        assert!("D dorian".parse::<Key>().is_err());
+        assert!("D".parse::<Key>().is_err());
     }
 
     #[test]

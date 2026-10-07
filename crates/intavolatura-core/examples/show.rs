@@ -4,7 +4,7 @@
 //! e.g.   `cargo run --example show -- "D minor" A2 "#" 5`
 
 use intavolatura_core::{
-    Chord, HandLimits, Instrument, Key, Mode, Pitch, Weights, candidate_fingerings, rank,
+    Chord, HandLimits, Instrument, Key, Pitch, Weights, candidate_fingerings, rank,
 };
 
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
         eprintln!("usage: show <key, e.g. \"D minor\"> <bass, e.g. A2> [figuring] [count]");
         std::process::exit(2);
     };
-    let key = parse_key(key).expect("key like \"D minor\" or \"F# major\"");
+    let key: Key = key.parse().expect("key like \"D minor\" or \"F# major\"");
     let bass: Pitch = bass.parse().expect("bass like A2 or F#3");
     let figuring = args
         .get(2)
@@ -51,14 +51,4 @@ fn main() {
             notes.join(" ")
         );
     }
-}
-
-fn parse_key(s: &str) -> Option<Key> {
-    let (tonic, mode) = s.split_once(' ')?;
-    let mode = match mode {
-        "major" => Mode::Major,
-        "minor" => Mode::Minor,
-        _ => return None,
-    };
-    Key::new(tonic.parse().ok()?, mode)
 }

@@ -40,6 +40,10 @@ impl BassLine {
         }
     }
 
+    pub fn with_notes(key: Key, notes: Vec<BassNote>) -> BassLine {
+        BassLine { key, notes }
+    }
+
     pub fn key(&self) -> Key {
         self.key
     }

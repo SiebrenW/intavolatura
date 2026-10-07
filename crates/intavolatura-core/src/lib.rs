@@ -6,6 +6,7 @@
 pub mod bass_line;
 pub mod chord;
 pub mod figuring;
+pub mod file_format;
 pub mod fingering;
 pub mod instrument;
 pub mod key;
@@ -16,6 +17,7 @@ pub mod realization;
 pub use bass_line::{BassLine, BassNote, Editor};
 pub use chord::{Chord, ChordTone};
 pub use figuring::{Figure, FigureAccidental, Figuring, Shape};
+pub use file_format::{Document, ReadError};
 pub use fingering::{Fingering, HandLimits, candidate_fingerings};
 pub use instrument::{Course, Instrument};
 pub use key::{Key, Mode};

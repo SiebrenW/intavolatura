@@ -29,6 +29,8 @@ impl Course {
 /// A plucked instrument, defined by its courses from the treble side down.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Instrument {
+    /// Stable identifier used in saved files.
+    id: &'static str,
     name: &'static str,
     /// Course 1 first.
     courses: Vec<Course>,
@@ -36,12 +38,12 @@ pub struct Instrument {
 
 impl Instrument {
     /// An instrument with courses listed from course 1 (treble side) down.
-    pub fn new(name: &'static str, courses: Vec<Course>) -> Instrument {
+    pub fn new(id: &'static str, name: &'static str, courses: Vec<Course>) -> Instrument {
         assert!(
             (1..=MAX_COURSES).contains(&courses.len()),
             "an instrument has 1 to {MAX_COURSES} courses"
         );
-        Instrument { name, courses }
+        Instrument { id, name, courses }
     }
 
     /// The 14-course theorbo in A: six fretted courses with the top two
@@ -52,6 +54,7 @@ impl Instrument {
             frets,
         };
         Instrument::new(
+            "theorbo-a-14",
             "Theorbo in A (14 courses)",
             vec![
                 course("A3", 11),
@@ -70,6 +73,18 @@ impl Instrument {
                 course("G1", 0),
             ],
         )
+    }
+
+    /// The built-in instrument with this identifier.
+    pub fn by_id(id: &str) -> Option<Instrument> {
+        match id {
+            "theorbo-a-14" => Some(Instrument::theorbo_in_a()),
+            _ => None,
+        }
+    }
+
+    pub fn id(&self) -> &'static str {
+        self.id
     }
 
     pub fn name(&self) -> &'static str {
@@ -101,10 +116,7 @@ impl Instrument {
                 }
             })
             .collect();
-        Instrument {
-            name: self.name,
-            courses,
-        }
+        Instrument { courses, ..*self }
     }
 
     /// Semitone number of the lowest note the instrument can sound.

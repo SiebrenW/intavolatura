@@ -17,7 +17,7 @@ Each step is buildable and tested before the next starts.
 7. [x] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
 8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
 9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
-10. [ ] **File format**: save/load the app's own text format.
+10. [x] **File format**: save/load the app's own text format.
 11. [ ] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown.
 12. [ ] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
 13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
@@ -50,7 +50,8 @@ Each step is buildable and tested before the next starts.
   - [ ] Tablature in Italian or French style (setting)
   - [ ] Long bass lines scroll horizontally; no system breaks
 - [ ] Files
-  - [ ] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins)
+  - [ ] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`
+  - [ ] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
   - [ ] Later: MusicXML import/export
 
 ## Later
