@@ -1,0 +1,397 @@
+//! Application state and its response to input, independent of Slint.
+
+use std::path::PathBuf;
+
+use intavolatura_core::file_format::{self, Document};
+use intavolatura_core::{
+    BassLine, BassNote, Editor, Figuring, Instrument, Key, Letter, Pitch, Realization, Settings,
+    realize,
+};
+
+use crate::view::{self, ColumnHit, Columns, ViewOptions};
+
+/// Keys the app reacts to, decoupled from the toolkit's key codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Input {
+    Up,
+    Down,
+    Left,
+    Right,
+    Delete,
+    Enter,
+    Escape,
+    Char(char),
+}
+
+/// Lowest and highest staff positions a click may place a bass note on.
+const LOWEST_CLICK: i16 = 9; // E1
+const HIGHEST_CLICK: i16 = 31; // F4
+
+pub struct App {
+    editor: Editor,
+    instrument: Instrument,
+    /// The instrument tuned for `tuned_for`.
+    tuned: Instrument,
+    tuned_for: Key,
+    settings: Settings,
+    show_hints: bool,
+    /// The realization of each note, and the note and key it was made for.
+    realizations: Vec<(BassNote, Key, Realization)>,
+    pub selected: Option<usize>,
+    pub editing: bool,
+    pub path: Option<PathBuf>,
+    pub status: String,
+}
+
+impl App {
+    pub fn new(document: Document, path: Option<PathBuf>) -> App {
+        let settings = Settings::default();
+        let key = document.line.key();
+        let tuned = settings.tune(&document.instrument, key);
+        let mut app = App {
+            selected: (!document.line.notes().is_empty()).then_some(0),
+            editor: Editor::new(document.line),
+            instrument: document.instrument,
+            tuned,
+            tuned_for: key,
+            settings,
+            show_hints: true,
+            realizations: Vec::new(),
+            editing: false,
+            path,
+            status: String::new(),
+        };
+        app.update_realizations();
+        app
+    }
+
+    pub fn empty(key: Key) -> App {
+        App::new(
+            Document {
+                line: BassLine::new(key),
+                instrument: Instrument::theorbo_in_a(),
+            },
+            None,
+        )
+    }
+
+    pub fn line(&self) -> &BassLine {
+        self.editor.line()
+    }
+
+    pub fn columns(&self) -> Columns {
+        Columns::new(self.line().key(), self.line().notes().len())
+    }
+
+    pub fn scene(&self) -> view::Scene {
+        let realizations: Vec<Realization> = self
+            .realizations
+            .iter()
+            .map(|(_, _, r)| r.clone())
+            .collect();
+        let options = ViewOptions {
+            show_hints: self.show_hints,
+        };
+        view::scene(self.line(), &realizations, &options)
+    }
+
+    /// One line describing the selected note.
+    pub fn describe_selection(&self) -> String {
+        let Some(index) = self.selected else {
+            return "Click the staff to add a bass note".to_string();
+        };
+        let note = &self.line().notes()[index];
+        let (_, _, realization) = &self.realizations[index];
+        let figuring = note.figuring.to_string();
+        let fingering = match realization.shown {
+            None => "no playable fingering".to_string(),
+            Some(shown) => {
+                let position = realization
+                    .candidates
+                    .iter()
+                    .position(|r| r.fingering == shown)
+                    .map_or("pinned".to_string(), |i| {
+                        format!("{}/{}", i + 1, realization.candidates.len())
+                    });
+                let pinned = if note.pin.is_some() { ", pinned" } else { "" };
+                let voicing: Vec<String> =
+                    realization.voicing.iter().map(Pitch::to_string).collect();
+                format!("fingering {position}{pinned}: {}", voicing.join(" "))
+            }
+        };
+        let figuring = if figuring.is_empty() {
+            "5/3".to_string()
+        } else {
+            figuring
+        };
+        format!("{}  {}  ·  {}", note.pitch, figuring, fingering)
+    }
+
+    /// Handles a key press; returns whether it was used.
+    pub fn key(&mut self, input: Input, shift: bool, command: bool) -> bool {
+        if self.editing {
+            if input == Input::Escape {
+                self.editing = false;
+                return true;
+            }
+            return false;
+        }
+        if command {
+            return match input {
+                Input::Char('z') if shift => self.edit(|e| e.redo()),
+                Input::Char('Z') => self.edit(|e| e.redo()),
+                Input::Char('z') => self.edit(|e| e.undo()),
+                Input::Char('y') => self.edit(|e| e.redo()),
+                Input::Char('s') => {
+                    self.save();
+                    true
+                }
+                _ => false,
+            };
+        }
+
+        let count = self.line().notes().len();
+        match (input, self.selected) {
+            (Input::Left, Some(i)) => self.selected = Some(i.saturating_sub(1)),
+            (Input::Right, Some(i)) => self.selected = Some((i + 1).min(count - 1)),
+            (Input::Left | Input::Right, None) if count > 0 => {
+                self.selected = Some(if input == Input::Left { count - 1 } else { 0 })
+            }
+            (Input::Up | Input::Down, Some(i)) => {
+                let up = input == Input::Up;
+                if shift {
+                    self.edit(|e| e.step_accidental(i, up));
+                } else {
+                    self.edit(|e| e.step_pitch(i, if up { 1 } else { -1 }));
+                }
+            }
+            (Input::Char('n'), Some(i)) => {
+                let pitch = self.line().notes()[i].pitch;
+                self.edit(|e| e.set_pitch(i, pitch.with_accidental(Default::default())));
+            }
+            (Input::Delete, Some(i)) => {
+                self.edit(|e| e.remove(i));
+                let count = self.line().notes().len();
+                self.selected = (count > 0).then(|| i.min(count - 1));
+            }
+            (Input::Enter, Some(_)) => self.editing = true,
+            (Input::Char(c @ ('[' | ']')), Some(i)) => {
+                let pin = self.realizations[i].2.cycle(c == ']');
+                self.edit(|e| e.set_pin(i, pin));
+            }
+            (Input::Escape, Some(_)) => self.selected = None,
+            _ => return false,
+        }
+        true
+    }
+
+    /// Handles a click at content coordinates; returns whether to start
+    /// editing the figuring of the selected column.
+    pub fn click(&mut self, x: f32, y: f32) -> bool {
+        self.editing = false;
+        let hit = self.columns().hit(x);
+        if y > view::BASS_ROW_BOTTOM {
+            if let ColumnHit::Column(i) = hit {
+                self.selected = Some(i);
+            }
+            return false;
+        }
+        if y > view::FIGURES_TOP - view::SPACE {
+            if let ColumnHit::Column(i) = hit {
+                self.selected = Some(i);
+                self.editing = true;
+                return true;
+            }
+            return false;
+        }
+
+        let position = view::bass_staff_position(y).clamp(LOWEST_CLICK, HIGHEST_CLICK);
+        let letter = Letter::from_index(position);
+        let pitch =
+            Pitch::from_staff_position(position, self.line().key().signature_accidental(letter));
+        match hit {
+            ColumnHit::Column(i) => {
+                self.selected = Some(i);
+                self.edit(|e| e.set_pitch(i, pitch));
+            }
+            ColumnHit::Insert(i) => {
+                self.edit(|e| e.insert(i, pitch));
+                self.selected = Some(i);
+            }
+        }
+        false
+    }
+
+    /// The canonical text of the selected note's figuring, for editing.
+    pub fn selected_figuring_text(&self) -> String {
+        self.selected
+            .map(|i| self.line().notes()[i].figuring.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Applies typed figuring text; on invalid text keeps editing and
+    /// returns false.
+    pub fn accept_figuring(&mut self, text: &str) -> bool {
+        let (Some(i), Ok(figuring)) = (self.selected, text.parse::<Figuring>()) else {
+            return false;
+        };
+        self.edit(|e| e.set_figuring(i, figuring));
+        self.editing = false;
+        true
+    }
+
+    pub fn set_key(&mut self, key: Key) {
+        self.edit(|e| e.set_key(key));
+    }
+
+    fn save(&mut self) {
+        let Some(path) = &self.path else {
+            self.status = "Start with a file path to save (intavolatura <file>)".to_string();
+            return;
+        };
+        let document = Document {
+            line: self.line().clone(),
+            instrument: self.instrument.clone(),
+        };
+        self.status = match std::fs::write(path, file_format::write(&document)) {
+            Ok(()) => format!("Saved {}", path.display()),
+            Err(e) => format!("Could not save: {e}"),
+        };
+    }
+
+    fn edit(&mut self, change: impl FnOnce(&mut Editor) -> bool) -> bool {
+        let changed = change(&mut self.editor);
+        if changed {
+            self.status.clear();
+            self.update_realizations();
+            let count = self.line().notes().len();
+            self.selected = self.selected.filter(|&i| i < count);
+        }
+        changed
+    }
+
+    /// Recomputes only the realizations whose note or key changed.
+    fn update_realizations(&mut self) {
+        let key = self.line().key();
+        if self.tuned_for != key {
+            self.tuned = self.settings.tune(&self.instrument, key);
+            self.tuned_for = key;
+        }
+        let notes = self.editor.line().notes();
+        self.realizations.truncate(notes.len());
+        for (i, note) in notes.iter().enumerate() {
+            let fresh = self
+                .realizations
+                .get(i)
+                .is_some_and(|(n, k, _)| n == note && *k == key);
+            if !fresh {
+                let r = realize(note, key, &self.tuned, &self.settings);
+                let entry = (note.clone(), key, r);
+                match self.realizations.get_mut(i) {
+                    Some(slot) => *slot = entry,
+                    None => self.realizations.push(entry),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::{BASS_STAFF_TOP, COLUMN_WIDTH};
+
+    fn app() -> App {
+        App::empty("D minor".parse().unwrap())
+    }
+
+    /// The y of a staff position on the bass staff.
+    fn y(position: i16) -> f32 {
+        BASS_STAFF_TOP + (26 - position) as f32 * view::SPACE / 2.0
+    }
+
+    #[test]
+    fn clicking_appends_notes_spelled_in_the_key() {
+        let mut app = app();
+        let x = app.columns().center(0);
+        app.click(x, y(20)); // B2, flat in D minor
+        let x = app.columns().center(1);
+        app.click(x, y(22)); // D3
+        let pitches: Vec<String> = app
+            .line()
+            .notes()
+            .iter()
+            .map(|n| n.pitch.to_string())
+            .collect();
+        assert_eq!(pitches, ["Bb2", "D3"]);
+        assert_eq!(app.selected, Some(1));
+    }
+
+    #[test]
+    fn clicking_a_column_moves_its_note_and_between_columns_inserts() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(22));
+        app.click(app.columns().center(1), y(19));
+        app.click(app.columns().center(0), y(21));
+        app.click(app.columns().left + COLUMN_WIDTH, y(18));
+        let pitches: Vec<String> = app
+            .line()
+            .notes()
+            .iter()
+            .map(|n| n.pitch.to_string())
+            .collect();
+        assert_eq!(pitches, ["C3", "G2", "A2"]);
+    }
+
+    #[test]
+    fn keys_move_select_and_undo() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(22)); // D3
+        assert!(app.key(Input::Up, false, false));
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "E3");
+        app.key(Input::Up, true, false);
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "E#3");
+        app.key(Input::Char('n'), false, false);
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "E3");
+        app.key(Input::Char('z'), false, true);
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "E#3");
+        app.key(Input::Char('z'), true, true);
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "E3");
+        app.key(Input::Delete, false, false);
+        assert!(app.line().notes().is_empty());
+        assert_eq!(app.selected, None);
+    }
+
+    #[test]
+    fn figurings_are_accepted_only_when_valid() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(19)); // A2
+        assert!(app.key(Input::Enter, false, false));
+        assert!(app.editing);
+        assert!(!app.accept_figuring("8"));
+        assert!(app.editing);
+        assert!(app.accept_figuring("#"));
+        assert!(!app.editing);
+        assert_eq!(app.line().notes()[0].figuring.to_string(), "#");
+    }
+
+    #[test]
+    fn cycling_pins_and_wraps_back_to_unpinned() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(19));
+        app.key(Input::Char(']'), false, false);
+        assert!(app.line().notes()[0].pin.is_some());
+        app.key(Input::Char('['), false, false);
+        assert!(app.line().notes()[0].pin.is_none());
+    }
+
+    #[test]
+    fn changing_key_recomputes_with_retuned_diapasons() {
+        let mut app = App::empty("C major".parse().unwrap());
+        app.click(app.columns().center(0), y(17)); // F2
+        app.set_key("D major".parse().unwrap());
+        // The click spelled F2; the key change keeps the written note.
+        assert_eq!(app.line().notes()[0].pitch.to_string(), "F2");
+        assert!(app.describe_selection().starts_with("F2"));
+    }
+}

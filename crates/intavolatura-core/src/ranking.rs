@@ -25,6 +25,8 @@ pub struct Weights {
     pub stopped_note: f32,
     /// Per octave the upper voices spread over.
     pub upper_spread: f32,
+    /// Per octave each upper voice lies outside the middle register.
+    pub upper_register: f32,
     /// Per note more or fewer than four.
     pub note_count: f32,
 }
@@ -39,10 +41,15 @@ impl Default for Weights {
             position: 0.3,
             stopped_note: 0.4,
             upper_spread: 1.0,
+            upper_register: 2.0,
             note_count: 0.8,
         }
     }
 }
+
+/// Where the upper voices of a continuo realization belong, as semitone
+/// numbers: A2 to E4.
+const MIDDLE_REGISTER: std::ops::RangeInclusive<i16> = 45..=64;
 
 /// A candidate fingering with its penalty score.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,6 +122,12 @@ pub fn penalty(
         && let (Some(low), Some(high)) = (upper.first(), upper.last())
     {
         total += weights.upper_spread * (high.semitones() - low.semitones()) as f32 / 12.0;
+        let outside: i16 = upper
+            .iter()
+            .map(|p| p.semitones())
+            .map(|s| (MIDDLE_REGISTER.start() - s).max(0) + (s - MIDDLE_REGISTER.end()).max(0))
+            .sum();
+        total += weights.upper_register * outside as f32 / 12.0;
     }
 
     total += weights.note_count * (voicing.len() as f32 - 4.0).abs();
@@ -189,6 +202,13 @@ mod tests {
                 assert_eq!(count, 1, "{bass} {figuring:?}");
             }
         }
+    }
+
+    #[test]
+    fn upper_voices_stay_out_of_the_diapason_register() {
+        let (instrument, chord, _, ranked) = ranked("G1", "4 3", c_major());
+        let best = ranked[0].fingering.voicing(&instrument, &chord);
+        assert!(best[1..].iter().all(|p| p.semitones() >= 45), "{best:?}");
     }
 
     #[test]

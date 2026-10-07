@@ -18,7 +18,7 @@ Each step is buildable and tested before the next starts.
 8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
 9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
 10. [x] **File format**: save/load the app's own text format.
-11. [ ] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown.
+11. [x] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown. Check layout offscreen with `cargo run -p intavolatura --example screenshot -- <file.intav> <out.png> [selected] [scale]`.
 12. [ ] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
 13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
 

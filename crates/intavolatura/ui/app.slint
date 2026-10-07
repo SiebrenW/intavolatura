@@ -1,0 +1,208 @@
+import { ComboBox, Button, AboutSlint } from "std-widgets.slint";
+import "../fonts/Bravura.otf";
+
+// Text centred on (x, y); see `view.rs`.
+export struct Glyph {
+    x: length,
+    y: length,
+    text: string,
+    music: bool,
+    size: length,
+    faded: bool,
+}
+
+export struct Bar {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+}
+
+export component AppWindow inherits Window {
+    title: "Intavolatura";
+    preferred-width: 1000px;
+    preferred-height: 360px;
+    background: #fbfaf6;
+    forward-focus: main;
+
+    in property <[Glyph]> glyphs;
+    in property <[Bar]> bars;
+    in property <length> content-width;
+    in property <length> content-height;
+    in property <[string]> keys;
+    in-out property <int> key-index;
+    in property <bool> has-selection;
+    in property <length> selection-x;
+    in property <length> column-width;
+    in property <bool> editing;
+    in property <length> edit-x;
+    in property <length> edit-y;
+    in-out property <string> figuring-text;
+    in property <bool> figuring-error;
+    in property <string> status;
+    in-out property <length> scroll-x;
+    out property <length> view-width: flick.width;
+
+    // A click in content coordinates.
+    callback clicked(length, length);
+    // A key press: text, shift, control (command on macOS). Returns whether handled.
+    callback key(string, bool, bool) -> bool;
+    callback key-selected(int);
+    callback figuring-edited(string);
+    callback figuring-accepted(string);
+
+    public function focus-main() {
+        main.focus();
+    }
+
+    public function focus-figuring() {
+        figuring.focus();
+        figuring.select-all();
+    }
+
+    main := FocusScope {
+        key-pressed(event) => {
+            if (root.key(event.text, event.modifiers.shift, event.modifiers.control)) {
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                padding: 6px;
+                spacing: 8px;
+                height: 42px;
+
+                Text {
+                    text: "Key";
+                    vertical-alignment: center;
+                }
+
+                ComboBox {
+                    width: 160px;
+                    model: root.keys;
+                    current-index <=> root.key-index;
+                    selected => {
+                        root.key-selected(self.current-index);
+                        main.focus();
+                    }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.status;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    color: #6b6b6b;
+                }
+
+                Button {
+                    text: "About";
+                    clicked => {
+                        about.show();
+                    }
+                }
+            }
+
+            flick := Flickable {
+                content-width: max(root.content-width, self.width);
+                content-height: max(root.content-height, self.height);
+                content-x <=> root.scroll-x;
+
+                if root.has-selection: Rectangle {
+                    x: root.selection-x;
+                    y: 0;
+                    width: root.column-width;
+                    height: flick.content-height;
+                    background: #ece6d6;
+                }
+
+                for bar in root.bars: Rectangle {
+                    x: bar.x;
+                    y: bar.y;
+                    width: bar.width;
+                    height: bar.height;
+                    background: #222222;
+                }
+
+                for glyph in root.glyphs: Text {
+                    x: glyph.x - 60px;
+                    y: glyph.y - glyph.size;
+                    width: 120px;
+                    height: 2 * glyph.size;
+                    text: glyph.text;
+                    font-family: glyph.music ? "Bravura" : "";
+                    font-size: glyph.size;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: glyph.faded ? #a09a8c : #1d1d1d;
+                }
+
+                TouchArea {
+                    width: flick.content-width;
+                    height: flick.content-height;
+                    clicked => {
+                        root.clicked(self.pressed-x, self.pressed-y);
+                    }
+                }
+
+                Rectangle {
+                    visible: root.editing;
+                    x: root.edit-x - 36px;
+                    y: root.edit-y;
+                    width: 72px;
+                    height: 26px;
+                    background: white;
+                    border-width: 1.5px;
+                    border-radius: 3px;
+                    border-color: root.figuring-error ? #c0392b : #5a8f6a;
+
+                    figuring := TextInput {
+                        x: 6px;
+                        width: parent.width - 12px;
+                        vertical-alignment: center;
+                        text <=> root.figuring-text;
+                        edited => {
+                            root.figuring-edited(self.text);
+                        }
+                        accepted => {
+                            root.figuring-accepted(self.text);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    about := PopupWindow {
+        x: root.width - 380px;
+        y: 44px;
+        width: 360px;
+
+        Rectangle {
+            background: white;
+            border-width: 1px;
+            border-color: #cccccc;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Intavolatura: figured bass realized for theorbo";
+                    font-weight: 600;
+                }
+
+                AboutSlint { }
+
+                Text {
+                    text: "Music font: Bravura © Steinberg Media Technologies, SIL Open Font License 1.1";
+                    wrap: word-wrap;
+                    color: #6b6b6b;
+                }
+            }
+        }
+    }
+}
