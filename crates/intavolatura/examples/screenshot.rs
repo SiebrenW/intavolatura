@@ -1,5 +1,5 @@
 //! Renders the window offscreen to a PNG, for checking the layout without
-//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale]`
+//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french]`
 
 use std::rc::Rc;
 
@@ -21,10 +21,11 @@ impl Platform for Offscreen {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [input, output, rest @ ..] = &args[..] else {
-        return Err("usage: screenshot <file.intav> <out.png> [selected] [scale]".into());
+        return Err("usage: screenshot <file.intav> <out.png> [selected] [scale] [french]".into());
     };
     let selected: Option<usize> = rest.first().and_then(|s| s.parse().ok());
     let scale: f32 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(2.0);
+    let french = rest.get(2).is_some_and(|s| s == "french");
 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(Offscreen(window.clone())))
@@ -33,10 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let document = file_format::read(&std::fs::read_to_string(input)?)?;
     let mut app = App::new(document, None);
     app.selected = selected.filter(|&i| i < app.line().notes().len());
+    if french {
+        app.tablature = intavolatura::view::TablatureStyle::French;
+    }
     let ui = AppWindow::new()?;
     ui::wire(&ui, app);
 
-    let (width, height) = ((1100.0 * scale) as u32, (360.0 * scale) as u32);
+    let (width, height) = ((1100.0 * scale) as u32, (720.0 * scale) as u32);
     window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged {
         scale_factor: scale,
     });

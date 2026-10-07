@@ -8,7 +8,7 @@ use intavolatura_core::{
     realize,
 };
 
-use crate::view::{self, ColumnHit, Columns, ViewOptions};
+use crate::view::{self, ColumnHit, Columns, TablatureStyle, ViewOptions};
 
 /// Keys the app reacts to, decoupled from the toolkit's key codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +35,7 @@ pub struct App {
     tuned_for: Key,
     settings: Settings,
     show_hints: bool,
+    pub tablature: TablatureStyle,
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
@@ -56,6 +57,7 @@ impl App {
             tuned_for: key,
             settings,
             show_hints: true,
+            tablature: TablatureStyle::Italian,
             realizations: Vec::new(),
             editing: false,
             path,
@@ -91,8 +93,9 @@ impl App {
             .collect();
         let options = ViewOptions {
             show_hints: self.show_hints,
+            tablature: self.tablature,
         };
-        view::scene(self.line(), &realizations, &options)
+        view::scene(self.line(), &realizations, &self.tuned, &options)
     }
 
     /// One line describing the selected note.

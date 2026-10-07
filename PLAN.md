@@ -19,39 +19,39 @@ Each step is buildable and tested before the next starts.
 9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
 10. [x] **File format**: save/load the app's own text format.
 11. [x] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown. Check layout offscreen with `cargo run -p intavolatura --example screenshot -- <file.intav> <out.png> [selected] [scale]`.
-12. [ ] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
+12. [x] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
 13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
 
 ## Features
 
-- [ ] Bass line input (bass staff)
-  - [ ] One key per bass line, chosen in a dropdown (e.g. C major, D minor); key signature shown on the bass staff and voicing staff
-  - [ ] Click after the last column to append a bass note; click between columns to insert; click a column to select it and move its bass note to the clicked pitch
-  - [ ] ↑/↓ move the bass note by staff step (diatonic, picks up the key signature)
-  - [ ] Shift+↑/↓ step the accidental (♭ / ♮ / ♯); `n` sets a natural
-  - [ ] ←/→ move between columns
-  - [ ] Delete/Backspace removes the selected bass note and its figuring
-  - [ ] Enter edits the column's figuring box; Esc returns to the column
-  - [ ] Undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) for every change: notes, figurings, pins, key
+- [x] Bass line input (bass staff)
+  - [x] One key per bass line, chosen in a dropdown (e.g. C major, D minor); key signature shown on the bass staff and voicing staff
+  - [x] Click after the last column to append a bass note; click between columns to insert; click a column to select it and move its bass note to the clicked pitch
+  - [x] ↑/↓ move the bass note by staff step (diatonic, picks up the key signature)
+  - [x] Shift+↑/↓ step the accidental (♭ / ♮ / ♯); `n` sets a natural
+  - [x] ←/→ move between columns
+  - [x] Delete/Backspace removes the selected bass note and its figuring
+  - [x] Enter edits the column's figuring box; Esc returns to the column
+  - [x] Undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) for every change: notes, figurings, pins, key
 - [ ] Figuring input
-  - [ ] Supported figurings: empty/5/3/5-3, 6, 6/3, 6/4, 7, 7/5/3, 6/5, 4/3, 6/4/3, 4/2, 2, 6/4/2
-  - [ ] Accidentals on any figure (♯ ♭ ♮), raised figures (6+, slashed 6); a lone accidental applies to the 3rd
-  - [ ] Figures are literal: always within the key unless an accidental says otherwise
-  - [ ] Displayed with proper symbols, highest figure on top
+  - [x] Supported figurings: empty/5/3/5-3, 6, 6/3, 6/4, 7, 7/5/3, 6/5, 4/3, 6/4/3, 4/2, 2, 6/4/2
+  - [x] Accidentals on any figure (♯ ♭ ♮), raised figures (6+, slashed 6); a lone accidental applies to the 3rd
+  - [x] Figures are literal: always within the key unless an accidental says otherwise
+  - [x] Displayed with proper symbols, highest figure on top
   - [ ] Leading-tone hint: faded (♯) in minor where a raised 3rd is likely but unmarked; can be disabled in settings
-- [ ] Fingering generation
-  - [ ] Generate all candidate fingerings for each chord on the current instrument
-  - [ ] Show the top-ranked candidate; `[` / `]` cycle through the top N and pin the choice (N is a setting, default 10)
-  - [ ] A pin is dropped when the bass note or figuring changes, and all pins when the key changes (undo restores them)
-  - [ ] Cycling back to the best candidate unpins, so the note follows the ranking again
-- [ ] Views
-  - [ ] Three rows aligned in columns: bass staff, voicing staff (grand staff), tablature
-  - [ ] Selected column highlighted across all rows
-  - [ ] Tablature in Italian or French style (setting)
-  - [ ] Long bass lines scroll horizontally; no system breaks
+- [x] Fingering generation
+  - [x] Generate all candidate fingerings for each chord on the current instrument
+  - [x] Show the top-ranked candidate; `[` / `]` cycle through the top N and pin the choice (N is a setting, default 10)
+  - [x] A pin is dropped when the bass note or figuring changes, and all pins when the key changes (undo restores them)
+  - [x] Cycling back to the best candidate unpins, so the note follows the ranking again
+- [x] Views
+  - [x] Three rows aligned in columns: bass staff, voicing staff (grand staff), tablature
+  - [x] Selected column highlighted across all rows
+  - [x] Tablature in Italian or French style (setting)
+  - [x] Long bass lines scroll horizontally; no system breaks
 - [ ] Files
-  - [ ] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`
-  - [ ] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
+  - [ ] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. For now: open by passing a path (`intavolatura <file>`), Ctrl/Cmd+S saves to it; file dialogs still to do
+  - [x] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
   - [ ] Later: MusicXML import/export
 
 ## Later

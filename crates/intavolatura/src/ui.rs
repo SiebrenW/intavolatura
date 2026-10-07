@@ -8,7 +8,7 @@ use slint::platform::Key as SlintKey;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::app::{App, Input};
-use crate::view;
+use crate::view::{self, TablatureStyle};
 use crate::{AppWindow, Bar, Glyph};
 
 /// Fills the window from `app` and connects every callback to it.
@@ -64,6 +64,20 @@ pub fn wire(window: &AppWindow, app: App) {
         if let Some(&key) = all_keys.get(index as usize) {
             app.set_key(key);
         }
+        refresh(&window, &app, &all_keys);
+    });
+
+    let weak = window.as_weak();
+    let state = app.clone();
+    let all_keys = keys.clone();
+    window.on_tablature_selected(move |index| {
+        let window = weak.unwrap();
+        let mut app = state.borrow_mut();
+        app.tablature = if index == 1 {
+            TablatureStyle::French
+        } else {
+            TablatureStyle::Italian
+        };
         refresh(&window, &app, &all_keys);
     });
 
@@ -143,6 +157,7 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
             y: b.y,
             width: b.width,
             height: b.height,
+            knockout: b.knockout,
         })
         .collect();
     window.set_glyphs(ModelRc::new(VecModel::from(glyphs)));
@@ -151,6 +166,7 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_content_height(scene.height);
 
     let key = app.line().key();
+    window.set_tablature_index(i32::from(app.tablature == TablatureStyle::French));
     window.set_key_index(keys.iter().position(|&k| k == key).unwrap_or(0) as i32);
 
     let columns = app.columns();

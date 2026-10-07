@@ -16,12 +16,14 @@ export struct Bar {
     y: length,
     width: length,
     height: length,
+    // Painted in the background colour to clear lines behind a glyph.
+    knockout: bool,
 }
 
 export component AppWindow inherits Window {
     title: "Intavolatura";
     preferred-width: 1000px;
-    preferred-height: 360px;
+    preferred-height: 720px;
     background: #fbfaf6;
     forward-focus: main;
 
@@ -31,6 +33,7 @@ export component AppWindow inherits Window {
     in property <length> content-height;
     in property <[string]> keys;
     in-out property <int> key-index;
+    in-out property <int> tablature-index;
     in property <bool> has-selection;
     in property <length> selection-x;
     in property <length> column-width;
@@ -48,6 +51,7 @@ export component AppWindow inherits Window {
     // A key press: text, shift, control (command on macOS). Returns whether handled.
     callback key(string, bool, bool) -> bool;
     callback key-selected(int);
+    callback tablature-selected(int);
     callback figuring-edited(string);
     callback figuring-accepted(string);
 
@@ -90,6 +94,21 @@ export component AppWindow inherits Window {
                 }
 
                 Text {
+                    text: "Tablature";
+                    vertical-alignment: center;
+                }
+
+                ComboBox {
+                    width: 110px;
+                    model: ["Italian", "French"];
+                    current-index <=> root.tablature-index;
+                    selected => {
+                        root.tablature-selected(self.current-index);
+                        main.focus();
+                    }
+                }
+
+                Text {
                     horizontal-stretch: 1;
                     text: root.status;
                     vertical-alignment: center;
@@ -123,7 +142,7 @@ export component AppWindow inherits Window {
                     y: bar.y;
                     width: bar.width;
                     height: bar.height;
-                    background: #222222;
+                    background: !bar.knockout ? #222222 : root.has-selection && bar.x >= root.selection-x && bar.x < root.selection-x + root.column-width ? #ece6d6 : #fbfaf6;
                 }
 
                 for glyph in root.glyphs: Text {
