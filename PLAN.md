@@ -142,7 +142,7 @@ Optimisation is a first-class goal, not an afterthought.
 
 ## Settings
 
-Kept in `preferences.txt` in the platform's config directory (macOS `~/Library/Application Support/Intavolatura`, Windows `%APPDATA%\Intavolatura`, Linux `$XDG_CONFIG_HOME/intavolatura`): tablature style, leading-tone hints, diapason retuning, left-hand fret span (2–6), fingerings to cycle (1–50).
+Kept in `preferences.txt` in the platform's config directory (macOS `~/Library/Application Support/Intavolatura`, Windows `%APPDATA%\Intavolatura`, Linux `$XDG_CONFIG_HOME/intavolatura`): theme (system, light or dark; default follows the system), tablature style, leading-tone hints, diapason retuning, left-hand fret span (2–6), fingerings to cycle (1–50).
 
 ## Platforms
 

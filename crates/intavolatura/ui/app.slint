@@ -24,14 +24,32 @@ export component AppWindow inherits Window {
     title: root.window-title;
     preferred-width: 1000px;
     preferred-height: 720px;
-    background: #fbfaf6;
+    background: root.paper;
     forward-focus: main;
 
-    // The score is drawn as dark ink on light paper, so the widgets use the
-    // light scheme too, even when the system is in dark mode.
+    // 0 follows the system, 1 is light, 2 is dark.
+    in-out property <int> theme;
+
     init => {
-        Palette.color-scheme = ColorScheme.light;
+        root.apply-theme();
     }
+    changed theme => {
+        root.apply-theme();
+    }
+
+    function apply-theme() {
+        Palette.color-scheme = root.theme == 1 ? ColorScheme.light : root.theme == 2 ? ColorScheme.dark : ColorScheme.unknown;
+    }
+
+    // Score colours: ink on paper, light or dark with the widgets.
+    property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    property <color> paper: root.dark ? #1e1c19 : #fbfaf6;
+    property <color> ink: root.dark ? #e9e5db : #1d1d1d;
+    property <color> faded-ink: root.dark ? #8c8578 : #a09a8c;
+    property <color> highlight: root.dark ? #3b362d : #ece6d6;
+    property <color> muted: root.dark ? #a9a294 : #6b6b6b;
+    property <color> panel: root.dark ? #2a2723 : #ffffff;
+    property <color> panel-border: root.dark ? #4a453c : #cccccc;
 
     in property <string> window-title: "Intavolatura";
     in property <[Glyph]> glyphs;
@@ -129,7 +147,7 @@ export component AppWindow inherits Window {
                     text: root.status;
                     vertical-alignment: center;
                     horizontal-alignment: right;
-                    color: #6b6b6b;
+                    color: root.muted;
                 }
 
                 Button {
@@ -181,7 +199,7 @@ export component AppWindow inherits Window {
                     y: 0;
                     width: root.column-width;
                     height: flick.content-height;
-                    background: #ece6d6;
+                    background: root.highlight;
                 }
 
                 for bar in root.bars: Rectangle {
@@ -189,7 +207,7 @@ export component AppWindow inherits Window {
                     y: bar.y;
                     width: bar.width;
                     height: bar.height;
-                    background: !bar.knockout ? #222222 : root.has-selection && bar.x >= root.selection-x && bar.x < root.selection-x + root.column-width ? #ece6d6 : #fbfaf6;
+                    background: !bar.knockout ? root.ink : root.has-selection && bar.x >= root.selection-x && bar.x < root.selection-x + root.column-width ? root.highlight : root.paper;
                 }
 
                 for glyph in root.glyphs: Text {
@@ -202,7 +220,7 @@ export component AppWindow inherits Window {
                     font-size: glyph.size;
                     horizontal-alignment: center;
                     vertical-alignment: center;
-                    color: glyph.faded ? #a09a8c : #1d1d1d;
+                    color: glyph.faded ? root.faded-ink : root.ink;
                 }
 
                 TouchArea {
@@ -219,7 +237,7 @@ export component AppWindow inherits Window {
                     y: root.edit-y;
                     width: 72px;
                     height: 26px;
-                    background: white;
+                    background: root.panel;
                     border-width: 1.5px;
                     border-radius: 3px;
                     border-color: root.figuring-error ? #c0392b : #5a8f6a;
@@ -228,6 +246,7 @@ export component AppWindow inherits Window {
                         x: 6px;
                         width: parent.width - 12px;
                         vertical-alignment: center;
+                        color: root.ink;
                         text <=> root.figuring-text;
                         edited => {
                             root.figuring-edited(self.text);
@@ -248,9 +267,9 @@ export component AppWindow inherits Window {
         close-policy: close-on-click-outside;
 
         Rectangle {
-            background: white;
+            background: root.panel;
             border-width: 1px;
-            border-color: #cccccc;
+            border-color: root.panel-border;
             border-radius: 4px;
 
             VerticalLayout {
@@ -260,6 +279,25 @@ export component AppWindow inherits Window {
                 Text {
                     text: "Settings";
                     font-weight: 600;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Theme";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    ComboBox {
+                        width: 110px;
+                        model: ["System", "Light", "Dark"];
+                        current-index <=> root.theme;
+                        selected => {
+                            root.preferences-changed();
+                        }
+                    }
                 }
 
                 CheckBox {
@@ -327,9 +365,9 @@ export component AppWindow inherits Window {
         width: 360px;
 
         Rectangle {
-            background: white;
+            background: root.panel;
             border-width: 1px;
-            border-color: #cccccc;
+            border-color: root.panel-border;
             border-radius: 4px;
 
             VerticalLayout {
@@ -346,7 +384,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: "Music font: Bravura © Steinberg Media Technologies, SIL Open Font License 1.1. Icons: Lucide, ISC License.";
                     wrap: word-wrap;
-                    color: #6b6b6b;
+                    color: root.muted;
                 }
             }
         }

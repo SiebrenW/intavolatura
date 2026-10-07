@@ -1,5 +1,5 @@
 //! Renders the window offscreen to a PNG, for checking the layout without
-//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french]`
+//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark]`
 
 use std::rc::Rc;
 
@@ -21,11 +21,15 @@ impl Platform for Offscreen {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [input, output, rest @ ..] = &args[..] else {
-        return Err("usage: screenshot <file.intav> <out.png> [selected] [scale] [french]".into());
+        return Err(
+            "usage: screenshot <file.intav> <out.png> [selected] [scale] [french] [dark]".into(),
+        );
     };
     let selected: Option<usize> = rest.first().and_then(|s| s.parse().ok());
     let scale: f32 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(2.0);
-    let french = rest.get(2).is_some_and(|s| s == "french");
+    let options = &rest[rest.len().min(2)..];
+    let french = options.iter().any(|s| s == "french");
+    let dark = options.iter().any(|s| s == "dark");
 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(Offscreen(window.clone())))
@@ -34,9 +38,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let document = file_format::read(&std::fs::read_to_string(input)?)?;
     let mut app = App::new(document, None);
     app.selected = selected.filter(|&i| i < app.line().notes().len());
+    let mut preferences = app.preferences();
     if french {
-        app.tablature = intavolatura::view::TablatureStyle::French;
+        preferences.tablature = intavolatura::view::TablatureStyle::French;
     }
+    if dark {
+        preferences.theme = intavolatura::preferences::Theme::Dark;
+    }
+    app.set_preferences(&preferences);
     let ui = AppWindow::new()?;
     ui::wire(&ui, app);
 

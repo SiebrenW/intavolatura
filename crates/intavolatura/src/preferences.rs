@@ -7,9 +7,32 @@ use intavolatura_core::Settings;
 
 use crate::view::TablatureStyle;
 
+/// Light or dark colours for the window and the score.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Theme {
+    /// Follow the system setting.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Theme {
+    pub const ALL: [Theme; 3] = [Theme::System, Theme::Light, Theme::Dark];
+
+    fn name(self) -> &'static str {
+        match self {
+            Theme::System => "system",
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+        }
+    }
+}
+
 /// Everything the settings popup controls.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Preferences {
+    pub theme: Theme,
     pub tablature: TablatureStyle,
     pub show_hints: bool,
     pub retune_diapasons: bool,
@@ -21,6 +44,7 @@ impl Default for Preferences {
     fn default() -> Preferences {
         let settings = Settings::default();
         Preferences {
+            theme: Theme::System,
             tablature: TablatureStyle::Italian,
             show_hints: true,
             retune_diapasons: settings.retune_diapasons,
@@ -52,6 +76,11 @@ impl Preferences {
             };
             let value = value.trim();
             match name.trim() {
+                "theme" => {
+                    if let Some(&theme) = Theme::ALL.iter().find(|t| t.name() == value) {
+                        p.theme = theme;
+                    }
+                }
                 "tablature" => match value {
                     "italian" => p.tablature = TablatureStyle::Italian,
                     "french" => p.tablature = TablatureStyle::French,
@@ -87,8 +116,12 @@ impl Preferences {
             TablatureStyle::French => "french",
         };
         format!(
-            "tablature = {tablature}\nshow_hints = {}\nretune_diapasons = {}\nfret_span = {}\ncandidates_to_cycle = {}\n",
-            self.show_hints, self.retune_diapasons, self.fret_span, self.candidates_to_cycle
+            "theme = {}\ntablature = {tablature}\nshow_hints = {}\nretune_diapasons = {}\nfret_span = {}\ncandidates_to_cycle = {}\n",
+            self.theme.name(),
+            self.show_hints,
+            self.retune_diapasons,
+            self.fret_span,
+            self.candidates_to_cycle
         )
     }
 
@@ -130,6 +163,7 @@ mod tests {
     #[test]
     fn round_trips_through_text() {
         let p = Preferences {
+            theme: Theme::Dark,
             tablature: TablatureStyle::French,
             show_hints: false,
             retune_diapasons: false,
@@ -141,8 +175,7 @@ mod tests {
 
     #[test]
     fn bad_lines_keep_defaults() {
-        let text =
-            "fret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
+        let text = "theme = purple\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
         assert_eq!(Preferences::parse(text), Preferences::default());
     }
 

@@ -10,7 +10,7 @@ use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::app::{App, Input};
-use crate::preferences::Preferences;
+use crate::preferences::{Preferences, Theme};
 use crate::view::{self, TablatureStyle};
 use crate::{AppWindow, Bar, Glyph};
 
@@ -111,7 +111,11 @@ pub fn wire(window: &AppWindow, app: App) {
     let s = shared.clone();
     window.on_preferences_changed(move || {
         s.update(|window, app| {
+            let theme = usize::try_from(window.get_theme()).ok();
             let preferences = Preferences {
+                theme: theme
+                    .and_then(|i| Theme::ALL.get(i).copied())
+                    .unwrap_or_default(),
                 show_hints: window.get_show_hints(),
                 retune_diapasons: window.get_retune_diapasons(),
                 fret_span: window.get_fret_span().clamp(2, 6) as u8,
@@ -307,6 +311,11 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_window_title(app.title().into());
 
     let preferences = app.preferences();
+    let theme = Theme::ALL
+        .iter()
+        .position(|&t| t == preferences.theme)
+        .unwrap_or(0);
+    window.set_theme(theme as i32);
     window.set_tablature_index(i32::from(preferences.tablature == TablatureStyle::French));
     window.set_show_hints(preferences.show_hints);
     window.set_retune_diapasons(preferences.retune_diapasons);

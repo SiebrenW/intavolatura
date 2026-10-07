@@ -8,7 +8,7 @@ use intavolatura_core::{
     realize,
 };
 
-use crate::preferences::Preferences;
+use crate::preferences::{Preferences, Theme};
 use crate::view::{self, ColumnHit, Columns, TablatureStyle, ViewOptions};
 
 /// Keys the app reacts to, decoupled from the toolkit's key codes.
@@ -36,6 +36,7 @@ pub struct App {
     tuned_for: Key,
     settings: Settings,
     show_hints: bool,
+    pub theme: Theme,
     pub tablature: TablatureStyle,
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
@@ -60,6 +61,7 @@ impl App {
             tuned_for: key,
             settings,
             show_hints: true,
+            theme: Theme::System,
             tablature: TablatureStyle::Italian,
             realizations: Vec::new(),
             editing: false,
@@ -128,6 +130,7 @@ impl App {
 
     pub fn preferences(&self) -> Preferences {
         Preferences {
+            theme: self.theme,
             tablature: self.tablature,
             show_hints: self.show_hints,
             retune_diapasons: self.settings.retune_diapasons,
@@ -139,6 +142,7 @@ impl App {
     /// Applies new preferences, recomputing every realization if the
     /// fingering settings changed.
     pub fn set_preferences(&mut self, preferences: &Preferences) {
+        self.theme = preferences.theme;
         self.tablature = preferences.tablature;
         self.show_hints = preferences.show_hints;
         let settings = preferences.settings();
