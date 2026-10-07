@@ -39,6 +39,9 @@ pub struct App {
     show_hints: bool,
     pub theme: Theme,
     pub tablature: TablatureStyle,
+    sign_size: u8,
+    italian_on_line: bool,
+    french_on_line: bool,
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
@@ -66,6 +69,9 @@ impl App {
             show_hints: true,
             theme: Theme::System,
             tablature: TablatureStyle::Italian,
+            sign_size: Preferences::default().sign_size,
+            italian_on_line: Preferences::default().italian_on_line,
+            french_on_line: Preferences::default().french_on_line,
             realizations: Vec::new(),
             editing: false,
             saved: BassLine::new(key),
@@ -164,6 +170,9 @@ impl App {
             retune_diapasons: self.settings.retune_diapasons,
             fret_span: self.settings.hand.fret_span,
             candidates_to_cycle: self.settings.candidates_to_cycle,
+            sign_size: self.sign_size,
+            italian_on_line: self.italian_on_line,
+            french_on_line: self.french_on_line,
         }
     }
 
@@ -171,6 +180,9 @@ impl App {
     /// fingering settings changed.
     pub fn set_preferences(&mut self, preferences: &Preferences) {
         self.theme = preferences.theme;
+        self.sign_size = preferences.sign_size;
+        self.italian_on_line = preferences.italian_on_line;
+        self.french_on_line = preferences.french_on_line;
         self.tablature = preferences.tablature;
         self.show_hints = preferences.show_hints;
         let settings = preferences.settings();
@@ -199,6 +211,7 @@ impl App {
         let options = ViewOptions {
             show_hints: self.show_hints,
             tablature: self.tablature,
+            signs: self.preferences().signs(),
         };
         view::scene(self.line(), &realizations, &self.tuned, &options)
     }

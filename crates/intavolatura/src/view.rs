@@ -58,9 +58,28 @@ const TAB_LINE: f32 = 16.0;
 /// staff spaces per em with a tablature line gap as the space.
 const TAB_MUSIC_SIZE: f32 = 2.4 * TAB_LINE;
 const TAB_GLYPH_WIDTH: f32 = 0.45 * TAB_LINE;
+/// Lowers a centred sign, as a fraction of its size.
 /// Bravura sets the signs on their baseline; this lowers them so they are
 /// centred on the line instead.
-const TAB_GLYPH_DROP: f32 = 0.12 * TAB_MUSIC_SIZE;
+const TAB_GLYPH_DROP: f32 = 0.12;
+
+/// How tablature signs are drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Signs {
+    /// Size relative to the default, e.g. 0.8 for 80%.
+    pub scale: f32,
+    /// Resting on the line, as in many sources, rather than centred on it.
+    pub on_line: bool,
+}
+
+impl Default for Signs {
+    fn default() -> Signs {
+        Signs {
+            scale: 1.0,
+            on_line: false,
+        }
+    }
+}
 const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
 pub const CONTENT_BOTTOM: f32 = TAB_BOTTOM + 4.0 * TAB_LINE;
 
@@ -243,6 +262,7 @@ pub enum TablatureStyle {
 pub struct ViewOptions {
     pub show_hints: bool,
     pub tablature: TablatureStyle,
+    pub signs: Signs,
 }
 
 /// Builds the scene for a bass line and the realization of each note on
@@ -406,6 +426,7 @@ pub fn scene(
                 &sounding.struck,
                 instrument,
                 options.tablature,
+                options.signs,
             );
         }
     }
@@ -501,6 +522,7 @@ fn draw_fingering(
     struck: &[(usize, u8)],
     instrument: &Instrument,
     style: TablatureStyle,
+    signs: Signs,
 ) {
     let courses = instrument.courses();
     let fretted = courses.iter().take_while(|c| !c.is_diapason()).count();
@@ -515,7 +537,7 @@ fn draw_fingering(
                 TablatureStyle::Italian => italian_number(fret as usize),
                 TablatureStyle::French => french_letter(fret).to_string(),
             };
-            scene.tab_sign(x, TAB_TOP + line as f32 * TAB_LINE, &text, true);
+            scene.tab_sign(x, TAB_TOP + line as f32 * TAB_LINE, &text, true, signs);
             continue;
         }
 
@@ -531,7 +553,7 @@ fn draw_fingering(
                     n => italian_number(n),
                 };
                 let y = TAB_BOTTOM + (1 + diapasons) as f32 * TAB_LINE;
-                scene.tab_sign(x, y, &text, false);
+                scene.tab_sign(x, y, &text, false, signs);
                 diapasons += 1;
             }
             TablatureStyle::Italian => {
@@ -546,7 +568,7 @@ fn draw_fingering(
                 };
                 let y = TAB_TOP - level as f32 * TAB_LINE;
                 scene.bar(x - 1.4 * SPACE, y - LINE / 2.0, 2.8 * SPACE, LINE);
-                scene.tab_sign(x, y, &text, true);
+                scene.tab_sign(x, y, &text, true, signs);
             }
         }
     }
@@ -845,20 +867,28 @@ impl Scene {
     }
 
     /// A tablature sign centred on `y`, optionally clearing the line behind it.
-    /// A tablature sign in Bravura's historical forms, centred on `y`,
-    /// optionally clearing the line behind it.
-    fn tab_sign(&mut self, x: f32, y: f32, text: &str, knockout: bool) {
+    /// A tablature sign in Bravura's historical forms on the line at `y`:
+    /// resting on it, or centred on it with the line cleared behind it
+    /// (where `knockout` asks for that).
+    fn tab_sign(&mut self, x: f32, y: f32, text: &str, knockout: bool, signs: Signs) {
+        let size = TAB_MUSIC_SIZE * signs.scale;
+        if signs.on_line {
+            // Bravura sets the signs on their baseline: on the line itself.
+            self.glyph(x, y - LINE, text, true, size);
+            return;
+        }
         if knockout {
-            let width = TAB_GLYPH_WIDTH * text.chars().count() as f32 + 3.0;
+            let width = TAB_GLYPH_WIDTH * signs.scale * text.chars().count() as f32 + 3.0;
+            let height = 0.7 * TAB_LINE * signs.scale;
             self.bars.push(Bar {
                 x: x - width / 2.0,
-                y: y - 0.35 * TAB_LINE,
+                y: y - height / 2.0,
                 width,
-                height: 0.7 * TAB_LINE,
+                height,
                 knockout: true,
             });
         }
-        self.glyph(x, y + TAB_GLYPH_DROP, text, true, TAB_MUSIC_SIZE);
+        self.glyph(x, y + TAB_GLYPH_DROP * size, text, true, size);
     }
 
     fn glyph(&mut self, x: f32, y: f32, text: &str, music: bool, size: f32) {
@@ -986,6 +1016,7 @@ mod tests {
         let options = ViewOptions {
             show_hints: false,
             tablature: TablatureStyle::Italian,
+            signs: Signs::default(),
         };
         let s = scene(&line, &[], &instrument, &options);
         // Bar lines are the tall thin bars at column edges: three rows each.
@@ -1106,11 +1137,18 @@ mod tests {
         let mut scene = Scene::default();
         let instrument = intavolatura_core::Instrument::theorbo_in_a();
         let struck: Vec<(usize, u8)> = fingering(stops).played().collect();
-        draw_fingering(&mut scene, 0.0, &struck, &instrument, style);
+        draw_fingering(
+            &mut scene,
+            0.0,
+            &struck,
+            &instrument,
+            style,
+            Signs::default(),
+        );
         scene
             .glyphs
             .into_iter()
-            .map(|g| (g.text, g.y - TAB_GLYPH_DROP))
+            .map(|g| (g.text, g.y - TAB_GLYPH_DROP * TAB_MUSIC_SIZE))
             .collect()
     }
 
@@ -1138,6 +1176,25 @@ mod tests {
                 (french_letter(9).to_string(), TAB_TOP + 5.0 * TAB_LINE),
             ]
         );
+    }
+
+    #[test]
+    fn signs_can_rest_on_the_line_and_scale() {
+        let mut scene = Scene::default();
+        let signs = Signs {
+            scale: 0.5,
+            on_line: true,
+        };
+        scene.tab_sign(0.0, TAB_TOP, "x", true, signs);
+        // Resting on the line: no knockout, baseline on the line, half size.
+        assert!(scene.bars.is_empty());
+        assert_eq!(scene.glyphs[0].y, TAB_TOP - LINE);
+        assert_eq!(scene.glyphs[0].size, TAB_MUSIC_SIZE * 0.5);
+
+        let mut scene = Scene::default();
+        scene.tab_sign(0.0, TAB_TOP, "x", true, Signs::default());
+        assert_eq!(scene.bars.len(), 1);
+        assert!(scene.glyphs[0].y > TAB_TOP);
     }
 
     #[test]
@@ -1239,6 +1296,7 @@ mod tests {
             let options = ViewOptions {
                 show_hints,
                 tablature: TablatureStyle::Italian,
+                signs: Signs::default(),
             };
             let s = scene(
                 &line,

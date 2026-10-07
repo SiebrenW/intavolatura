@@ -1,5 +1,5 @@
 //! Renders the window offscreen to a PNG, for checking the layout without
-//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark] [keys] [help] [import] [report]`
+//! a display: `cargo run --example screenshot -- <file.intav> <out.png> [selected] [scale] [french] [dark] [keys] [help] [import] [report] [settings]`
 
 use std::rc::Rc;
 
@@ -63,6 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if shortcuts {
         ui.invoke_show_shortcuts();
+    }
+    if options.iter().any(|s| s == "settings") {
+        ui.invoke_show_settings();
     }
     if options.iter().any(|s| s == "import") {
         let parts: Vec<slint::SharedString> = ["Violino I", "Canto", "Basso continuo · figured"]

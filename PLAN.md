@@ -132,7 +132,7 @@ Weights to be tuned against real bass lines.
 
 ## Tablature: signs
 
-All signs use the historical forms in Bravura's SMuFL lute tablature ranges (French letters U+EBC0–EBCC and course signs U+EBCD–EBD0, Italian numerals U+EBE0–EBE9; SIL OFL, already bundled), centred on their lines.
+All signs use the historical forms in Bravura's SMuFL lute tablature ranges (French letters U+EBC0–EBCC and course signs U+EBCD–EBD0, Italian numerals U+EBE0–EBE9; SIL OFL, already bundled). Settings: sign size (50–150%), and per style whether signs rest on the line, as in many sources (French default), or are centred on it with the line cleared behind (Italian default).
 
 ## Tablature: diapason signs (theorbo, courses 7–14)
 
@@ -159,7 +159,7 @@ Optimisation is a first-class goal, not an afterthought.
 
 ## Settings
 
-Kept in `preferences.txt` in the platform's config directory (macOS `~/Library/Application Support/Intavolatura`, Windows `%APPDATA%\Intavolatura`, Linux `$XDG_CONFIG_HOME/intavolatura`): theme (system, light or dark; default follows the system), tablature style, leading-tone hints, diapason retuning, left-hand fret span (2–6), fingerings to cycle (1–50).
+Kept in `preferences.txt` in the platform's config directory (macOS `~/Library/Application Support/Intavolatura`, Windows `%APPDATA%\Intavolatura`, Linux `$XDG_CONFIG_HOME/intavolatura`): tablature sign size and placement, theme (system, light or dark; default follows the system), tablature style, leading-tone hints, diapason retuning, left-hand fret span (2–6), fingerings to cycle (1–50).
 
 ## Platforms
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use intavolatura_core::Settings;
 
-use crate::view::TablatureStyle;
+use crate::view::{Signs, TablatureStyle};
 
 /// Light or dark colours for the window and the score.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -38,7 +38,15 @@ pub struct Preferences {
     pub retune_diapasons: bool,
     pub fret_span: u8,
     pub candidates_to_cycle: usize,
+    /// Tablature sign size in percent of the default.
+    pub sign_size: u8,
+    /// Italian signs rest on the line rather than centred on it.
+    pub italian_on_line: bool,
+    /// French signs rest on the line rather than centred on it.
+    pub french_on_line: bool,
 }
+
+pub const SIGN_SIZES: std::ops::RangeInclusive<u8> = 50..=150;
 
 impl Default for Preferences {
     fn default() -> Preferences {
@@ -50,6 +58,9 @@ impl Default for Preferences {
             retune_diapasons: settings.retune_diapasons,
             fret_span: settings.hand.fret_span,
             candidates_to_cycle: settings.candidates_to_cycle,
+            sign_size: 100,
+            italian_on_line: false,
+            french_on_line: true,
         }
     }
 }
@@ -97,6 +108,15 @@ impl Preferences {
                         p.fret_span = n;
                     }
                 }
+                "sign_size" => {
+                    if let Ok(n) = value.parse::<u8>()
+                        && SIGN_SIZES.contains(&n)
+                    {
+                        p.sign_size = n;
+                    }
+                }
+                "italian_on_line" => p.italian_on_line = value.parse().unwrap_or(p.italian_on_line),
+                "french_on_line" => p.french_on_line = value.parse().unwrap_or(p.french_on_line),
                 "candidates_to_cycle" => {
                     if let Ok(n) = value.parse::<usize>()
                         && CANDIDATES.contains(&n)
@@ -115,14 +135,30 @@ impl Preferences {
             TablatureStyle::Italian => "italian",
             TablatureStyle::French => "french",
         };
-        format!(
-            "theme = {}\ntablature = {tablature}\nshow_hints = {}\nretune_diapasons = {}\nfret_span = {}\ncandidates_to_cycle = {}\n",
-            self.theme.name(),
-            self.show_hints,
-            self.retune_diapasons,
-            self.fret_span,
-            self.candidates_to_cycle
-        )
+        [
+            format!("theme = {}", self.theme.name()),
+            format!("tablature = {tablature}"),
+            format!("show_hints = {}", self.show_hints),
+            format!("retune_diapasons = {}", self.retune_diapasons),
+            format!("fret_span = {}", self.fret_span),
+            format!("candidates_to_cycle = {}", self.candidates_to_cycle),
+            format!("sign_size = {}", self.sign_size),
+            format!("italian_on_line = {}", self.italian_on_line),
+            format!("french_on_line = {}", self.french_on_line),
+        ]
+        .map(|line| line + "\n")
+        .concat()
+    }
+
+    /// How tablature signs are drawn in the chosen style.
+    pub fn signs(&self) -> Signs {
+        Signs {
+            scale: self.sign_size as f32 / 100.0,
+            on_line: match self.tablature {
+                TablatureStyle::Italian => self.italian_on_line,
+                TablatureStyle::French => self.french_on_line,
+            },
+        }
     }
 
     /// Loads the saved preferences, or the defaults if there are none.
@@ -169,13 +205,16 @@ mod tests {
             retune_diapasons: false,
             fret_span: 3,
             candidates_to_cycle: 20,
+            sign_size: 80,
+            italian_on_line: true,
+            french_on_line: false,
         };
         assert_eq!(Preferences::parse(&p.to_text()), p);
     }
 
     #[test]
     fn bad_lines_keep_defaults() {
-        let text = "theme = purple\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
+        let text = "theme = purple\nsign_size = 300\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
         assert_eq!(Preferences::parse(text), Preferences::default());
     }
 

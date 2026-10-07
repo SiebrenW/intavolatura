@@ -179,6 +179,9 @@ pub fn wire(window: &AppWindow, app: App) {
                 retune_diapasons: window.get_retune_diapasons(),
                 fret_span: window.get_fret_span().clamp(2, 6) as u8,
                 candidates_to_cycle: window.get_candidates_to_cycle().clamp(1, 50) as usize,
+                sign_size: window.get_sign_size().clamp(50, 150) as u8,
+                italian_on_line: window.get_italian_on_line(),
+                french_on_line: window.get_french_on_line(),
                 ..app.preferences()
             };
             apply_preferences(app, &preferences);
@@ -518,6 +521,9 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_retune_diapasons(preferences.retune_diapasons);
     window.set_fret_span(preferences.fret_span.into());
     window.set_candidates_to_cycle(preferences.candidates_to_cycle as i32);
+    window.set_sign_size(preferences.sign_size.into());
+    window.set_italian_on_line(preferences.italian_on_line);
+    window.set_french_on_line(preferences.french_on_line);
 
     let time = app.line().time();
     window.set_time_index(

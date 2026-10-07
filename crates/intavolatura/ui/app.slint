@@ -104,6 +104,9 @@ export component AppWindow inherits Window {
     in-out property <bool> retune-diapasons;
     in-out property <int> fret-span;
     in-out property <int> candidates-to-cycle;
+    in-out property <int> sign-size;
+    in-out property <bool> italian-on-line;
+    in-out property <bool> french-on-line;
 
     // A click in content coordinates.
     callback clicked(length, length);
@@ -125,6 +128,10 @@ export component AppWindow inherits Window {
     in property <[string]> import-changes;
     callback import-part(int);
     callback preferences-changed();
+
+    public function show-settings() {
+        settings.show();
+    }
 
     public function choose-import-part() {
         import-parts-popup.show();
@@ -433,6 +440,43 @@ export component AppWindow inherits Window {
                         selected => {
                             root.tablature-selected(self.current-index);
                         }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Tablature sign size (%)";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 50;
+                        maximum: 150;
+                        step-size: 10;
+                        value <=> root.sign-size;
+                        edited(value) => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                CheckBox {
+                    text: "Italian signs rest on the line";
+                    checked <=> root.italian-on-line;
+                    toggled => {
+                        root.preferences-changed();
+                    }
+                }
+
+                CheckBox {
+                    text: "French signs rest on the line";
+                    checked <=> root.french-on-line;
+                    toggled => {
+                        root.preferences-changed();
                     }
                 }
 
