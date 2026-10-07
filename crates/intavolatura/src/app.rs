@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use intavolatura_core::file_format::{self, Document};
+use intavolatura_core::musicxml;
 use intavolatura_core::{
     BassLine, BassNote, Duration, Editor, Figurings, Instrument, Key, Letter, NoteValue, Pitch,
     Realization, Settings, TimeSignature, realize,
@@ -112,6 +113,30 @@ impl App {
                 false
             }
         }
+    }
+
+    /// Writes the bass line as MusicXML, with the realization part if asked.
+    pub fn export_musicxml(&mut self, path: &Path, with_realization: bool) {
+        let realizations: Vec<Realization> = self
+            .realizations
+            .iter()
+            .map(|(_, _, r)| r.clone())
+            .collect();
+        let title = self
+            .path
+            .as_deref()
+            .or(Some(path))
+            .and_then(Path::file_stem)
+            .map_or("Untitled".into(), |s| s.to_string_lossy().into_owned());
+        let xml = musicxml::export(
+            self.line(),
+            with_realization.then_some(&realizations[..]),
+            &title,
+        );
+        self.status = match std::fs::write(path, xml) {
+            Ok(()) => format!("Exported {}", path.display()),
+            Err(e) => format!("Could not export {}: {e}", path.display()),
+        };
     }
 
     /// Whether the bass line differs from the file it was opened from or

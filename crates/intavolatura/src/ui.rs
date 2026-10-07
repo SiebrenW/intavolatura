@@ -184,6 +184,11 @@ pub fn wire(window: &AppWindow, app: App) {
     });
 
     let s = shared.clone();
+    window.on_export_file(move |with_realization| {
+        export_file(&s, with_realization);
+    });
+
+    let s = shared.clone();
     window.on_save_file(move || {
         save_file(&s, false);
     });
@@ -321,6 +326,27 @@ fn save_file(s: &Shared, ask: bool) -> bool {
         s.update(|_, app| app.save_to(path));
     }
     true
+}
+
+/// Asks where to write MusicXML, then exports.
+fn export_file(s: &Shared, with_realization: bool) {
+    let current = s.app.borrow().path.clone();
+    let name = current
+        .as_deref()
+        .and_then(|p| p.file_stem())
+        .map_or("Untitled".into(), |n| n.to_string_lossy().into_owned());
+    let mut dialog = FileDialog::new()
+        .add_filter("MusicXML", &["musicxml"])
+        .set_file_name(format!("{name}.musicxml"));
+    if let Some(dir) = current.as_deref().and_then(|p| p.parent()) {
+        dialog = dialog.set_directory(dir);
+    }
+    if let Some(mut path) = dialog.save_file() {
+        if path.extension().is_none() {
+            path.set_extension("musicxml");
+        }
+        s.update(|_, app| app.export_musicxml(&path, with_realization));
+    }
 }
 
 /// Translates Slint's key text into the app's inputs.

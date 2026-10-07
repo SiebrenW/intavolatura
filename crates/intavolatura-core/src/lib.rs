@@ -11,6 +11,7 @@ pub mod file_format;
 pub mod fingering;
 pub mod instrument;
 pub mod key;
+pub mod musicxml;
 pub mod pitch;
 pub mod ranking;
 pub mod realization;

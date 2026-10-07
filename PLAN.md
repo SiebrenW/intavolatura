@@ -51,7 +51,7 @@ Each step is buildable and tested before the next starts.
   - [x] Three rows aligned in columns: bass staff, voicing staff (grand staff), tablature
   - [x] Selected column highlighted across all rows
   - [x] Every shortcut and the figuring syntax listed in a Keys overview (button, `?` or F1)
-  - [x] Tablature in Italian or French style (setting)
+  - [x] Tablature in Italian or French style (in Settings)
   - [x] Long bass lines scroll horizontally; no system breaks
 - [x] Rhythm
   - [x] Each bass note has a duration (whole to sixteenth, optionally dotted); keys 7 6 5 4 3 and `.`, or the duration bar; new notes take the last duration chosen
@@ -64,7 +64,8 @@ Each step is buildable and tested before the next starts.
   - [x] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. Open/Save buttons and Ctrl/Cmd+O, Ctrl/Cmd+S, Ctrl/Cmd+Shift+S with native dialogs; a path on the command line opens that file
   - [x] The window title marks unsaved changes; opening another file or closing asks before discarding them
   - [x] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
-  - [ ] Later: MusicXML import/export
+  - [x] MusicXML export (Export button): the figured bass part, and optionally the realization on a grand staff (held notes tied, filler rests hidden); notes over a bar line are split and tied; no tablature. Check with `cargo run --example to_musicxml -- <in.intav> <out.musicxml>`
+  - [ ] MusicXML import (.musicxml, .xml, .mxl): choose the part; ties joined, lowest note of chords, voice 1 only, unsupported durations rounded, first time signature only, unsupported figures left empty; a summary lists every change
 
 ## Later
 

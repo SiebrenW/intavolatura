@@ -118,6 +118,8 @@ export component AppWindow inherits Window {
     callback figuring-accepted(string);
     callback open-file();
     callback save-file();
+    // MusicXML export: with the realization part, or the figured bass only.
+    callback export-file(bool);
     callback preferences-changed();
 
     public function show-shortcuts() {
@@ -199,21 +201,6 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                Text {
-                    text: "Tablature";
-                    vertical-alignment: center;
-                }
-
-                ComboBox {
-                    width: 110px;
-                    model: ["Italian", "French"];
-                    current-index <=> root.tablature-index;
-                    selected => {
-                        root.tablature-selected(self.current-index);
-                        main.focus();
-                    }
-                }
-
                 Rectangle {
                     horizontal-stretch: 1;
                 }
@@ -239,7 +226,18 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "Keys";
+                    text: "Export";
+                    icon: @image-url("icons/file-output.svg");
+                    colorize-icon: true;
+                    clicked => {
+                        export.show();
+                    }
+                }
+
+                Button {
+                    // Icon only, to keep the header narrow; the shortcut
+                    // overview and popups say what they are.
+                    accessible-label: "Keys";
                     icon: @image-url("icons/keyboard.svg");
                     colorize-icon: true;
                     clicked => {
@@ -248,7 +246,9 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "Settings";
+                    // Icon only, to keep the header narrow; the shortcut
+                    // overview and popups say what they are.
+                    accessible-label: "Settings";
                     icon: @image-url("icons/settings.svg");
                     colorize-icon: true;
                     clicked => {
@@ -257,7 +257,9 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "About";
+                    // Icon only, to keep the header narrow; the shortcut
+                    // overview and popups say what they are.
+                    accessible-label: "About";
                     icon: @image-url("icons/info.svg");
                     colorize-icon: true;
                     clicked => {
@@ -403,6 +405,25 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Tablature";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    ComboBox {
+                        width: 110px;
+                        model: ["Italian", "French"];
+                        current-index <=> root.tablature-index;
+                        selected => {
+                            root.tablature-selected(self.current-index);
+                        }
+                    }
+                }
+
                 CheckBox {
                     text: "Show leading-tone hints";
                     checked <=> root.show-hints;
@@ -457,6 +478,55 @@ export component AppWindow inherits Window {
                             root.preferences-changed();
                         }
                     }
+                }
+            }
+        }
+    }
+
+    export := PopupWindow {
+        x: root.width - 600px;
+        y: 44px;
+        width: 300px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Export as MusicXML";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                Button {
+                    text: "Figured bass and realization";
+                    clicked => {
+                        export.close();
+                        root.export-file(true);
+                        main.focus();
+                    }
+                }
+
+                Button {
+                    text: "Figured bass only";
+                    clicked => {
+                        export.close();
+                        root.export-file(false);
+                        main.focus();
+                    }
+                }
+
+                Text {
+                    text: "Opens in MuseScore, Dorico, Sibelius and other notation programs. Tablature is not included.";
+                    wrap: word-wrap;
+                    color: root.muted;
                 }
             }
         }
