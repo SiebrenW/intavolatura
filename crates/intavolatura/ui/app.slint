@@ -1,6 +1,7 @@
 import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
 import { KeyPicker } from "key_picker.slint";
+import { ShortcutsPanel } from "help.slint";
 
 // Text centred on (x, y); see `view.rs`.
 export struct Glyph {
@@ -62,6 +63,8 @@ export component AppWindow inherits Window {
     // Key names in `Key::all()` order, and the current key with its signature.
     in property <[string]> keys;
     in property <string> key-label;
+    // "⌘" on macOS, "Ctrl" elsewhere, for the shortcuts overview.
+    in property <string> command-key: "Ctrl";
     in-out property <int> key-index;
     in-out property <int> tablature-index;
     in property <bool> has-selection;
@@ -93,6 +96,10 @@ export component AppWindow inherits Window {
     callback open-file();
     callback save-file();
     callback preferences-changed();
+
+    public function show-shortcuts() {
+        shortcuts.show();
+    }
 
     public function open-key-picker() {
         key-picker.open();
@@ -182,6 +189,15 @@ export component AppWindow inherits Window {
                     clicked => {
                         root.save-file();
                         main.focus();
+                    }
+                }
+
+                Button {
+                    text: "Keys";
+                    icon: @image-url("icons/keyboard.svg");
+                    colorize-icon: true;
+                    clicked => {
+                        shortcuts.show();
                     }
                 }
 
@@ -370,6 +386,26 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    shortcuts := PopupWindow {
+        x: max(0px, root.width - 760px);
+        y: 44px;
+        width: min(root.width, 750px);
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            ShortcutsPanel {
+                command: root.command-key;
+                ink: root.ink;
+                muted: root.muted;
             }
         }
     }

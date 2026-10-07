@@ -47,6 +47,7 @@ Each step is buildable and tested before the next starts.
 - [x] Views
   - [x] Three rows aligned in columns: bass staff, voicing staff (grand staff), tablature
   - [x] Selected column highlighted across all rows
+  - [x] Every shortcut and the figuring syntax listed in a Keys overview (button, `?` or F1)
   - [x] Tablature in Italian or French style (setting)
   - [x] Long bass lines scroll horizontally; no system breaks
 - [ ] Files
@@ -57,7 +58,7 @@ Each step is buildable and tested before the next starts.
 
 ## Later
 
-- Suspensions (4–3, 7–6, 9–8): several figurings in sequence over one bass note; needs rhythm within a note.
+- Suspensions (4–3, 7–6, 9–8): several figurings in sequence over one bass note, typed with a dash between them (`4-3`, `7-6`, `6 4-5 3`); each part is a full figuring, shown side by side under the note.
 - Rarer figures (9, 9/7, 5/4, ♯4/2, …) and continuation lines.
 - Rhythm, bar lines, voice leading between chords.
 - More instruments: baroque guitar, renaissance lute in G.

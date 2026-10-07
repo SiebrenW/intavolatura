@@ -178,7 +178,7 @@ impl App {
     /// One line describing the selected note.
     pub fn describe_selection(&self) -> String {
         let Some(index) = self.selected else {
-            return "Click the staff to add a bass note".to_string();
+            return "Click the staff to add a bass note · ? shows all keys".to_string();
         };
         let note = &self.line().notes()[index];
         let (_, _, realization) = &self.realizations[index];

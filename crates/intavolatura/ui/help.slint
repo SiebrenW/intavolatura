@@ -1,0 +1,217 @@
+// Every keyboard shortcut and the figuring syntax, so nothing is guesswork.
+
+component Section inherits Text {
+    font-weight: 600;
+}
+
+component Row inherits HorizontalLayout {
+    in property <string> keys;
+    in property <string> action;
+    in property <color> ink;
+    in property <color> muted;
+
+    spacing: 12px;
+
+    Text {
+        width: 150px;
+        text: root.keys;
+        color: root.ink;
+        font-weight: 600;
+    }
+
+    Text {
+        text: root.action;
+        color: root.muted;
+        wrap: word-wrap;
+        horizontal-stretch: 1;
+    }
+}
+
+export component ShortcutsPanel inherits Rectangle {
+    // "⌘" on macOS, "Ctrl" elsewhere.
+    in property <string> command;
+    in property <color> ink;
+    in property <color> muted;
+
+    HorizontalLayout {
+        padding: 14px;
+        spacing: 28px;
+
+        VerticalLayout {
+            spacing: 5px;
+            alignment: start;
+
+            Section {
+                text: "Bass notes";
+                color: root.ink;
+            }
+
+            Row {
+                keys: "Click staff";
+                action: "Add a note after the last, insert between notes, or move a note";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "← →";
+                action: "Select the previous or next note";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "↑ ↓";
+                action: "Move the note one staff step, in the key";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "Shift + ↑ ↓";
+                action: "Raise or lower its accidental (♭ ♮ ♯)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "N";
+                action: "Make the note natural";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "Delete / Backspace";
+                action: "Remove the note";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "Esc";
+                action: "Deselect";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Section {
+                text: "Figures and fingerings";
+                color: root.ink;
+            }
+
+            Row {
+                keys: "Enter / click figures";
+                action: "Edit the figuring; Enter accepts, Esc cancels";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "[ ]";
+                action: "Previous or next fingering; your choice is pinned";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Section {
+                text: "File and editing";
+                color: root.ink;
+            }
+
+            Row {
+                keys: root.command + " Z";
+                action: "Undo";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "Shift " + root.command + " Z";
+                action: "Redo";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: root.command + " O";
+                action: "Open";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: root.command + " S";
+                action: "Save (Shift for Save As)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "? / F1";
+                action: "Show this overview";
+                ink: root.ink;
+                muted: root.muted;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 5px;
+            alignment: start;
+
+            Section {
+                text: "Typing figures";
+                color: root.ink;
+            }
+
+            Row {
+                keys: "(empty)";
+                action: "5/3";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "6 5  or  6/5  or  65";
+                action: "Stacked figures, any order";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "#6  b7  n3";
+                action: "Sharp, flat, natural on a figure (also after it: 6#)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "6+  or  6\\";
+                action: "Raised figure (slashed 6)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "#  b  n";
+                action: "Alone: an accidental for the 3rd";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "6 #";
+                action: "6 with a raised 3rd (the space matters)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Text {
+                text: "♯ and ♭ raise or lower the note the key gives; ♮ gives the plain letter.";
+                color: root.muted;
+                wrap: word-wrap;
+                width: 300px;
+            }
+        }
+    }
+}

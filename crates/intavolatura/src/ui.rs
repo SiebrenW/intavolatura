@@ -41,6 +41,14 @@ pub fn wire(window: &AppWindow, app: App) {
     let key_names: Vec<SharedString> = keys.iter().map(|&k| key_name(k).into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
+    window.set_command_key(
+        if cfg!(target_os = "macos") {
+            "⌘"
+        } else {
+            "Ctrl"
+        }
+        .into(),
+    );
 
     let shared = Shared {
         window: window.as_weak(),
@@ -51,6 +59,11 @@ pub fn wire(window: &AppWindow, app: App) {
 
     let s = shared.clone();
     window.on_key(move |text, shift, command| {
+        let editing = s.app.borrow().editing;
+        if !editing && (text == "?" || text == SharedString::from(SlintKey::F1)) {
+            s.window.unwrap().invoke_show_shortcuts();
+            return true;
+        }
         let Some(input) = input(&text) else {
             return false;
         };
