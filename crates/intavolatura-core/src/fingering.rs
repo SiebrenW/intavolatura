@@ -16,6 +16,12 @@ impl Fingering {
         frets: [None; MAX_COURSES],
     };
 
+    /// A fingering from the fret per course (index 0 is course 1), as stored
+    /// for a pinned fingering. It is not checked against any chord.
+    pub const fn from_frets(frets: [Option<u8>; MAX_COURSES]) -> Fingering {
+        Fingering { frets }
+    }
+
     /// The fret played on `course` (index 0 is course 1), if it is played.
     pub fn fret(&self, course: usize) -> Option<u8> {
         self.frets.get(course).copied().flatten()

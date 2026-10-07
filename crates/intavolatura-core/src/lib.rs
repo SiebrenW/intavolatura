@@ -9,6 +9,7 @@ pub mod fingering;
 pub mod instrument;
 pub mod key;
 pub mod pitch;
+pub mod ranking;
 
 pub use chord::{Chord, ChordTone};
 pub use figuring::{Figure, FigureAccidental, Figuring, Shape};
@@ -16,3 +17,4 @@ pub use fingering::{Fingering, HandLimits, candidate_fingerings};
 pub use instrument::{Course, Instrument};
 pub use key::{Key, Mode};
 pub use pitch::{Accidental, Letter, NoteName, Pitch};
+pub use ranking::{Ranked, Weights, rank};

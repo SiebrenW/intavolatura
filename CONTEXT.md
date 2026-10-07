@@ -73,7 +73,7 @@ _Avoid_: String (when a pair is meant)
 A course that runs over the fingerboard and can be stopped at a fret.
 
 **Diapason**:
-A bass course that lies off the fingerboard and only sounds its open pitch.
+A bass course that lies off the fingerboard and only sounds its open pitch. Diapasons are tuned diatonically, normally retuned to the key.
 _Avoid_: Bass string, open bass
 
 **Barré**:

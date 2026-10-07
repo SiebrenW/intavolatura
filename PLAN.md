@@ -16,11 +16,11 @@ Each step is buildable and tested before the next starts.
 6. [ ] **Bass line**: columns, editing commands, pins, undo/redo.
 7. [x] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
 8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
-9. [ ] **Ranking**: weighted score; tune on real bass lines.
+9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
 10. [ ] **File format**: save/load the app's own text format.
 11. [ ] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown.
 12. [ ] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
-13. [ ] **App: polish**: settings (tablature style, hints, fret span), About dialog with Slint attribution, startup time and memory checks.
+13. [ ] **App: polish**: settings (tablature style, hints, fret span, diapason retuning), About dialog with Slint attribution, startup time and memory checks.
 
 ## Features
 
@@ -110,7 +110,8 @@ Weights to be tuned against real bass lines.
 ## Instrument: 14-course theorbo in A
 
 - Fretted courses 1–6: A3 E3 B3 G3 D3 A2 (courses 1 and 2 dropped an octave: re-entrant).
-- Diapasons 7–14: G2 F2 E2 D2 C2 B1 A1 G1 (diatonic; retunable to the key).
+- Diapasons 7–14: G2 F2 E2 D2 C2 B1 A1 G1 (diatonic).
+- Setting "retune diapasons to the key" (default on): diapasons take the key signature's accidentals, e.g. F#2 and C#2 in D major.
 - Instruments are data (courses, tuning, fret count per course) so others can be added.
 
 ## Tablature: diapason signs (theorbo, courses 7–14)
