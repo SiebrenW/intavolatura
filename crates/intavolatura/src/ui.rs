@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Figuring, Key};
+use intavolatura_core::{Figuring, Key, Mode};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -38,7 +38,7 @@ impl Shared {
 /// Fills the window from `app` and connects every callback to it.
 pub fn wire(window: &AppWindow, app: App) {
     let keys: Rc<[Key]> = Key::all().collect();
-    let key_names: Vec<SharedString> = keys.iter().map(|k| k.to_string().into()).collect();
+    let key_names: Vec<SharedString> = keys.iter().map(|&k| key_label(k).into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
 
@@ -161,6 +161,29 @@ pub fn wire(window: &AppWindow, app: App) {
             CloseRequestResponse::KeepWindowShown
         }
     });
+}
+
+/// A key with its signature, as listed in the key picker: `B♭ major · 2♭`.
+fn key_label(key: Key) -> String {
+    let tonic = key.tonic();
+    let accidental = match tonic.accidental.semitones() {
+        -1 => "♭",
+        1 => "♯",
+        _ => "",
+    };
+    let mode = match key.mode() {
+        Mode::Major => "major",
+        Mode::Minor => "minor",
+    };
+    let signature = match key.signature() {
+        0 => "no ♯/♭".to_string(),
+        n if n > 0 => format!("{n}♯"),
+        n => format!("{}♭", -n),
+    };
+    format!(
+        "{}{accidental} {mode} · {signature}",
+        tonic.letter.as_char()
+    )
 }
 
 /// Applies and stores new preferences; a failure to store is shown, not fatal.
@@ -353,5 +376,21 @@ fn scroll_into_view(window: &AppWindow, center: f32) {
         window.set_scroll_x(-(center - margin).max(0.0));
     } else if center + margin > visible_left + width {
         window.set_scroll_x(-(center + margin - width));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_labels_show_the_signature() {
+        let label = |s: &str| key_label(s.parse().unwrap());
+        assert_eq!(label("C major"), "C major · no ♯/♭");
+        assert_eq!(label("E major"), "E major · 4♯");
+        assert_eq!(label("D minor"), "D minor · 1♭");
+        assert_eq!(label("Bb major"), "B♭ major · 2♭");
+        assert_eq!(label("C# minor"), "C♯ minor · 4♯");
+        assert_eq!(label("Cb major"), "C♭ major · 7♭");
     }
 }
