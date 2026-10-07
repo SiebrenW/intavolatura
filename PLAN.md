@@ -16,7 +16,7 @@ Each step is buildable and tested before the next starts.
 6. [x] **Bass line**: columns, editing commands, pins, undo/redo.
 7. [x] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
 8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
-9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues.
+9. [x] **Ranking**: weighted score; inspect with `cargo run --example show -- "D minor" A2 "#"`. Tuning the weights on real bass lines continues. Tune against pinned choices in saved files with `cargo run --release --example tune -- <files>`.
 10. [x] **File format**: save/load the app's own text format.
 11. [x] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown. Check layout offscreen with `cargo run -p intavolatura --example screenshot -- <file.intav> <out.png> [selected] [scale]`.
 12. [x] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.

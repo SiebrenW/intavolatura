@@ -47,6 +47,54 @@ impl Default for Weights {
     }
 }
 
+impl Weights {
+    /// The weights in the order of [`FEATURES`].
+    pub fn to_array(&self) -> [f32; FEATURE_COUNT] {
+        [
+            self.bass_octave_lower,
+            self.stretch,
+            self.incomplete,
+            self.doubled_third,
+            self.position,
+            self.stopped_note,
+            self.upper_spread,
+            self.upper_register,
+            self.note_count,
+        ]
+    }
+
+    /// Weights from an array in the order of [`FEATURES`].
+    pub fn from_array(w: [f32; FEATURE_COUNT]) -> Weights {
+        Weights {
+            bass_octave_lower: w[0],
+            stretch: w[1],
+            incomplete: w[2],
+            doubled_third: w[3],
+            position: w[4],
+            stopped_note: w[5],
+            upper_spread: w[6],
+            upper_register: w[7],
+            note_count: w[8],
+        }
+    }
+}
+
+pub const FEATURE_COUNT: usize = 9;
+
+/// Names of the measured preferences, in the order of [`features`] and
+/// [`Weights::to_array`].
+pub const FEATURES: [&str; FEATURE_COUNT] = [
+    "bass_octave_lower",
+    "stretch",
+    "incomplete",
+    "doubled_third",
+    "position",
+    "stopped_note",
+    "upper_spread",
+    "upper_register",
+    "note_count",
+];
+
 /// Where the upper voices of a continuo realization belong, as semitone
 /// numbers: A2 to E4.
 const MIDDLE_REGISTER: std::ops::RangeInclusive<i16> = 45..=64;
@@ -85,53 +133,63 @@ pub fn penalty(
     written_bass: Pitch,
     weights: &Weights,
 ) -> f32 {
+    let f = features(fingering, instrument, chord, written_bass);
+    weights.to_array().iter().zip(f).map(|(w, f)| w * f).sum()
+}
+
+/// How much a fingering goes against each preference, in the order of
+/// [`FEATURES`]; the penalty is these weighted and summed.
+pub fn features(
+    fingering: &Fingering,
+    instrument: &Instrument,
+    chord: &Chord,
+    written_bass: Pitch,
+) -> [f32; FEATURE_COUNT] {
     let voicing = fingering.voicing(instrument, chord);
-    let bass = voicing[0];
-    let mut total = 0.0;
+    let flag = |b: bool| if b { 1.0 } else { 0.0 };
 
-    if bass.semitones() < written_bass.semitones() {
-        total += weights.bass_octave_lower;
-    }
+    let bass_octave_lower = flag(voicing[0].semitones() < written_bass.semitones());
 
-    total += weights.stretch * stretch(fingering);
-
-    let sounding = |interval: u8| {
-        let tone = chord.tones().iter().find(|t| t.interval == interval);
-        tone.map_or(0, |t| voicing.iter().filter(|p| p.name == t.name).count())
-    };
     let optional_missing = chord
         .tones()
         .iter()
         .any(|t| !t.required && voicing.iter().all(|p| p.name != t.name));
-    if optional_missing {
-        total += weights.incomplete;
-    }
-    if sounding(3) > 1 {
-        total += weights.doubled_third;
-    }
+    let thirds = chord
+        .tones()
+        .iter()
+        .find(|t| t.interval == 3)
+        .map_or(0, |t| voicing.iter().filter(|p| p.name == t.name).count());
 
     let stopped: Vec<u8> = fingering
         .played()
         .map(|(_, f)| f)
         .filter(|&f| f > 0)
         .collect();
-    total += weights.position * stopped.iter().copied().max().unwrap_or(0) as f32;
-    total += weights.stopped_note * stopped.len() as f32;
 
+    let (mut upper_spread, mut upper_register) = (0.0, 0.0);
     if let [_, upper @ ..] = &voicing[..]
         && let (Some(low), Some(high)) = (upper.first(), upper.last())
     {
-        total += weights.upper_spread * (high.semitones() - low.semitones()) as f32 / 12.0;
+        upper_spread = (high.semitones() - low.semitones()) as f32 / 12.0;
         let outside: i16 = upper
             .iter()
             .map(|p| p.semitones())
             .map(|s| (MIDDLE_REGISTER.start() - s).max(0) + (s - MIDDLE_REGISTER.end()).max(0))
             .sum();
-        total += weights.upper_register * outside as f32 / 12.0;
+        upper_register = outside as f32 / 12.0;
     }
 
-    total += weights.note_count * (voicing.len() as f32 - 4.0).abs();
-    total
+    [
+        bass_octave_lower,
+        stretch(fingering),
+        flag(optional_missing),
+        flag(thirds > 1),
+        stopped.iter().copied().max().unwrap_or(0) as f32,
+        stopped.len() as f32,
+        upper_spread,
+        upper_register,
+        (voicing.len() as f32 - 4.0).abs(),
+    ]
 }
 
 /// Left-hand stretch: fret distance plus half the course distance between
@@ -209,6 +267,19 @@ mod tests {
         let (instrument, chord, _, ranked) = ranked("G1", "4 3", c_major());
         let best = ranked[0].fingering.voicing(&instrument, &chord);
         assert!(best[1..].iter().all(|p| p.semitones() >= 45), "{best:?}");
+    }
+
+    #[test]
+    fn weights_round_trip_through_arrays_and_penalty_is_the_weighted_sum() {
+        let w = Weights::default();
+        assert_eq!(Weights::from_array(w.to_array()), w);
+
+        let (instrument, chord, bass, ranked) = ranked("B2", "6 5", c_major());
+        for r in ranked.iter().take(20) {
+            let f = features(&r.fingering, &instrument, &chord, bass);
+            let sum: f32 = w.to_array().iter().zip(f).map(|(w, f)| w * f).sum();
+            assert!((sum - r.penalty).abs() < 1e-4);
+        }
     }
 
     #[test]
