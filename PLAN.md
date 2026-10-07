@@ -22,6 +22,75 @@ Each step is buildable and tested before the next starts.
 12. [x] **App: voicing staff and tablature**: grand staff, Italian and French tablature, column alignment, scrolling.
 13. [x] **App: polish**: settings (tablature style, hints, fret span, diapason retuning, number of candidates to cycle), About dialog with Slint attribution, startup time and memory checks.
 
+## Roadmap, phase 2
+
+Four features, in this order: rhythm comes first because playback needs exact timing and PDF needs bar lines to break systems at; PDF reuses the display list; instruments touch everything, so they come last, onto a settled base. Each feature starts with a short design session on its open decisions (recommendations given), then builds in tested, committed steps.
+
+### A. More rhythm
+
+Goal: real continuo parts fit without warnings.
+
+Steps:
+14. [ ] **Ties across bar lines**: a note that runs over a bar line is drawn as tied notes on both sides (as export already writes it), replacing the warning colour. Display only; the model keeps one note.
+15. [ ] **Upbeat**: a bass line can start with an incomplete bar. Bar lines, export (`implicit` first measure) and import (instead of the current warning) follow.
+16. [ ] **Time signature changes**: a time signature can start at any note; drawn there on both staves, kept in files, exported and imported (instead of being ignored).
+17. [ ] **Uneven suspension splits**: a figuring part can carry its own duration, e.g. a dotted quarter then an eighth for 7–6.
+18. [ ] **Triplets** (optional): three notes in the time of two, for proportio/tripla passages.
+
+Open decisions:
+- Upbeat input: a setting "first bar starts after …" in the time signature picker (recommended), or derived from a rest-free first note?
+- Meter change input: a key on the selected note that opens the time signature picker for "from here" (recommended), or a separate marker entry in the bass line?
+- Uneven split syntax: a duration after each part, `7:4.-6:8` (recommended, reuses duration notation), or setting part lengths with the duration keys while a part is selected?
+- Triplets now or later? (Recommended: later, unless your repertoire needs them.)
+
+### B. Playback
+
+Goal: hear the bass line and its realization as the theorbo would sound, to judge voicings and fingerings by ear.
+
+Steps:
+19. [ ] **Audio engine** (core-independent module in the app): a plucked-string synthesizer (Karplus–Strong), one voice per course, so a re-struck course stops its previous note and open diapasons ring long. Output through `cpal`; started lazily on first play, so startup stays fast.
+20. [ ] **Scheduling**: the bass line becomes timed course/fret events (bass on the beat, upper notes slightly arpeggiated), held suspension voices keep sounding, rests are silent. Tempo in quarter notes per minute.
+21. [ ] **Transport**: Space plays and stops from the selected column (or the start); a playhead highlights the sounding column and scrolls with it; Esc stops.
+22. [ ] **Settings**: tempo, arpeggiation spread, volume; play bass only / realization only / both.
+
+Open decisions:
+- Sound: synthesized plucked strings (recommended: no sample files, no licensing, small) or a sampled SoundFont of a lute/theorbo (more realistic, but needs a freely licensed sound set and adds megabytes)?
+- Where tempo lives: in the file per bass line (recommended, like key and meter) or only as a setting?
+- Follow pinned fingerings exactly, so you hear the course choices (recommended), or just the pitches?
+
+Risks: audio APIs differ per platform; `cpal` covers macOS, Windows and Linux (ALSA/PulseAudio). Audio runs on its own thread so editing stays responsive.
+
+### C. More instruments
+
+Goal: realize the same figured bass for other continuo instruments, each in its proper tablature.
+
+Steps:
+23. [ ] **Instrument definitions** as data, with per-instrument rules: courses and tuning, fret counts, diapasons, which tablature styles apply, and realization rules that differ (e.g. on re-entrant guitar the lowest sounding note need not be the bass). Candidates: Renaissance lute in G (6–8 courses), archlute in G (14 courses), 13-course baroque lute (D minor tuning, French tablature), 5-course baroque guitar (re-entrant, with or without bourdons), theorbo in G.
+24. [ ] **Instrument picker** per bass line (files already store `instrument:`), diapason retuning per instrument.
+25. [ ] **Tablature drawing generalized**: as many lines as fretted courses (5 for guitar, 6 for lute), each instrument's diapason signs, 7th-course conventions of the lute.
+26. [ ] **Fingering rules per instrument**: hand limits, ranking weights and register defaults tuned per instrument.
+
+Open decisions:
+- Which instruments first? (Recommended: Renaissance lute in G and baroque guitar, the two you named before; then archlute.)
+- Baroque guitar continuo: fingered chords like the theorbo (recommended first), or also alfabeto (strummed chord letters), which is a separate notation?
+- One instrument per bass line (recommended), or show two instruments side by side?
+
+### D. PDF export of the tablature
+
+Goal: a printable score to play from.
+
+Steps:
+27. [ ] **System layout**: break the line into systems at bar lines to fit the page width, repeat clefs, key signature and tablature start on every system; page breaks between systems; title and page numbers.
+28. [ ] **PDF writer**: draw the existing display list (glyphs, lines, ties) as vector PDF with Bravura embedded (subset), using `pdf-writer` and `ttf-parser`/`subsetter`; no raster images, small files, sharp at any zoom.
+29. [ ] **Export dialog**: what to print (tablature only; tablature with the bass staff; all three rows), page size (A4/Letter), staff size, title and composer.
+
+Open decisions:
+- Default contents: tablature with the figured bass staff above it (recommended: what a player reads from), tablature only, or all three rows?
+- Page size default: A4 (recommended) or Letter?
+- Should printing honour the screen settings (tablature style, sign size, placement), recommended, or have its own?
+
+Risks: font embedding and glyph mapping need care; checked by opening output in a PDF viewer and comparing to the screen render.
+
 ## Features
 
 - [x] Bass line input (bass staff)
@@ -70,9 +139,7 @@ Each step is buildable and tested before the next starts.
 ## Later
 
 - Rarer figure combinations (9/7, 9/4, 7/4, 6/4/2 with a 7, …) and continuation lines.
-- Upbeats, ties across bar lines, time signature changes, uneven suspension splits.
 - Voice leading between chords.
-- More instruments: baroque guitar, renaissance lute in G.
 
 ## Figuring input syntax
 
