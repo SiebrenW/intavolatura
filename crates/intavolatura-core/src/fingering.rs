@@ -39,19 +39,23 @@ impl Fingering {
     pub fn voicing(&self, instrument: &Instrument, chord: &Chord) -> Vec<Pitch> {
         let mut pitches: Vec<Pitch> = self
             .played()
-            .map(|(course, fret)| {
-                let semitones = instrument.courses()[course].semitones_at(fret);
-                let name = chord
-                    .tones()
-                    .iter()
-                    .map(|t| t.name)
-                    .find(|n| n.pitch_class() as i16 == semitones.rem_euclid(12))
-                    .expect("a fingering only sounds chord tones");
-                spell(name, semitones)
-            })
+            .map(|(course, _)| self.pitch_on(course, instrument, chord))
             .collect();
         pitches.sort_by_key(|p| p.semitones());
         pitches
+    }
+
+    /// The note sounding on a played `course`, spelled as the chord spells it.
+    pub fn pitch_on(&self, course: usize, instrument: &Instrument, chord: &Chord) -> Pitch {
+        let fret = self.fret(course).expect("the course is played");
+        let semitones = instrument.courses()[course].semitones_at(fret);
+        let name = chord
+            .tones()
+            .iter()
+            .map(|t| t.name)
+            .find(|n| n.pitch_class() as i16 == semitones.rem_euclid(12))
+            .expect("a fingering only sounds chord tones");
+        spell(name, semitones)
     }
 }
 
@@ -250,31 +254,40 @@ impl<'a> Search<'a> {
         sounding & self.required == self.required && self.hand_fits(&state.fingering)
     }
 
-    /// Whether the left hand can stop every stopped note, using a barré on
-    /// the lowest stopped fret if there are more notes than fingers.
     fn hand_fits(&self, fingering: &Fingering) -> bool {
-        let stops = fingering.played().filter(|&(_, fret)| fret > 0);
-        let stopped = stops.clone().count();
-        if stopped <= self.limits.fingers as usize {
-            return true;
-        }
-        let lowest = stops
-            .clone()
-            .map(|(_, f)| f)
-            .min()
-            .expect("some note is stopped");
-        let barred: Vec<usize> = stops
-            .filter(|&(_, f)| f == lowest)
-            .map(|(c, _)| c)
-            .collect();
-        let fingers = stopped - barred.len() + 1;
-        if barred.len() < 2 || fingers > self.limits.fingers as usize {
-            return false;
-        }
-        // The barré stops every course it lies across, so none of those may ring open.
-        let (first, last) = (barred[0], barred[barred.len() - 1]);
-        (first..=last).all(|course| fingering.fret(course) != Some(0))
+        hand_fits(fingering, self.limits)
     }
+}
+
+/// Whether the left hand can stop every stopped note within the fret span,
+/// using a barré on the lowest stopped fret if there are more notes than
+/// fingers.
+pub(crate) fn hand_fits(fingering: &Fingering, limits: HandLimits) -> bool {
+    let stops = fingering.played().filter(|&(_, fret)| fret > 0);
+    let (Some(lowest), Some(highest)) = (
+        stops.clone().map(|(_, f)| f).min(),
+        stops.clone().map(|(_, f)| f).max(),
+    ) else {
+        return true;
+    };
+    if highest - lowest + 1 > limits.fret_span {
+        return false;
+    }
+    let stopped = stops.clone().count();
+    if stopped <= limits.fingers as usize {
+        return true;
+    }
+    let barred: Vec<usize> = stops
+        .filter(|&(_, f)| f == lowest)
+        .map(|(c, _)| c)
+        .collect();
+    let fingers = stopped - barred.len() + 1;
+    if barred.len() < 2 || fingers > limits.fingers as usize {
+        return false;
+    }
+    // The barré stops every course it lies across, so none of those may ring open.
+    let (first, last) = (barred[0], barred[barred.len() - 1]);
+    (first..=last).all(|course| fingering.fret(course) != Some(0))
 }
 
 #[cfg(test)]

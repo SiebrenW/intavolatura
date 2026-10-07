@@ -13,10 +13,11 @@ pub mod key;
 pub mod pitch;
 pub mod ranking;
 pub mod realization;
+pub mod resolution;
 
 pub use bass_line::{BassLine, BassNote, Editor};
 pub use chord::{Chord, ChordTone};
-pub use figuring::{Figure, FigureAccidental, Figuring, Shape};
+pub use figuring::{Figure, FigureAccidental, Figuring, Figurings, Shape};
 pub use file_format::{Document, ReadError};
 pub use fingering::{Fingering, HandLimits, candidate_fingerings};
 pub use instrument::{Course, Instrument};
@@ -24,3 +25,4 @@ pub use key::{Key, Mode};
 pub use pitch::{Accidental, Letter, NoteName, Pitch};
 pub use ranking::{Ranked, Weights, rank};
 pub use realization::{Realization, Settings, realize};
+pub use resolution::{Move, Resolution, resolve};

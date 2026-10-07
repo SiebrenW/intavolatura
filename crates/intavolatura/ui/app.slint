@@ -13,6 +13,15 @@ export struct Glyph {
     faded: bool,
 }
 
+// A filled curve, as SVG path commands in the pixels of its box.
+export struct Tie {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    commands: string,
+}
+
 export struct Bar {
     x: length,
     y: length,
@@ -58,6 +67,7 @@ export component AppWindow inherits Window {
     in property <string> window-title: "Intavolatura";
     in property <[Glyph]> glyphs;
     in property <[Bar]> bars;
+    in property <[Tie]> ties;
     in property <length> content-width;
     in property <length> content-height;
     // Key names in `Key::all()` order, and the current key with its signature.
@@ -69,6 +79,7 @@ export component AppWindow inherits Window {
     in-out property <int> tablature-index;
     in property <bool> has-selection;
     in property <length> selection-x;
+    in property <length> selection-width;
     in property <length> column-width;
     in property <bool> editing;
     in property <length> edit-x;
@@ -228,7 +239,7 @@ export component AppWindow inherits Window {
                 if root.has-selection: Rectangle {
                     x: root.selection-x;
                     y: 0;
-                    width: root.column-width;
+                    width: root.selection-width;
                     height: flick.content-height;
                     background: root.highlight;
                 }
@@ -238,7 +249,18 @@ export component AppWindow inherits Window {
                     y: bar.y;
                     width: bar.width;
                     height: bar.height;
-                    background: !bar.knockout ? root.ink : root.has-selection && bar.x >= root.selection-x && bar.x < root.selection-x + root.column-width ? root.highlight : root.paper;
+                    background: !bar.knockout ? root.ink : root.has-selection && bar.x >= root.selection-x && bar.x < root.selection-x + root.selection-width ? root.highlight : root.paper;
+                }
+
+                for tie in root.ties: Path {
+                    x: tie.x;
+                    y: tie.y;
+                    width: tie.width;
+                    height: tie.height;
+                    viewbox-width: tie.width / 1px;
+                    viewbox-height: tie.height / 1px;
+                    commands: tie.commands;
+                    fill: root.ink;
                 }
 
                 for glyph in root.glyphs: Text {

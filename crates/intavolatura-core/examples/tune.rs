@@ -78,7 +78,9 @@ fn load(
         let key = document.line.key();
         let instrument = settings.tune(&document.instrument, key);
         for (index, note) in document.line.notes().iter().enumerate() {
-            let chord = Chord::new(note.pitch.name, &note.figuring, key);
+            // Tuning looks at the first chord; a suspension's resolution is
+            // derived from it, not ranked.
+            let chord = Chord::new(note.pitch.name, &note.figurings.parts()[0], key);
             let candidates = candidate_fingerings(&instrument, &chord, note.pitch, settings.hand);
             let name = std::path::Path::new(file)
                 .file_name()
@@ -87,7 +89,7 @@ fn load(
                 "{name} #{} {} {:?}",
                 index + 1,
                 note.pitch,
-                note.figuring.to_string()
+                note.figurings.to_string()
             );
             if candidates.is_empty() {
                 println!("skipped {label}: no playable fingering");

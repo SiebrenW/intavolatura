@@ -41,11 +41,11 @@ pub fn write(document: &Document) -> String {
     );
     for note in document.line.notes() {
         out.push_str(&note.pitch.to_string());
-        if !note.figuring.is_empty() || note.pin.is_some() {
+        if !note.figurings.is_empty() || note.pin.is_some() {
             out.push_str(" |");
-            if !note.figuring.is_empty() {
+            if !note.figurings.is_empty() {
                 out.push(' ');
-                out.push_str(&note.figuring.to_string());
+                out.push_str(&note.figurings.to_string());
             }
         }
         if let Some(pin) = note.pin {
@@ -112,7 +112,7 @@ fn read_note(line: &str, instrument: &Instrument) -> Result<BassNote, &'static s
         .ok_or("invalid pitch")?;
     let mut note = BassNote::new(pitch);
     if let Some(figuring) = parts.next() {
-        note.figuring = figuring.parse().map_err(|_| "invalid figuring")?;
+        note.figurings = figuring.parse().map_err(|_| "invalid figuring")?;
     }
     if let Some(pin) = parts.next() {
         note.pin = Some(read_pin(pin, instrument)?);
@@ -182,14 +182,14 @@ Bb2 | 6+ 4
         assert_eq!(doc.instrument.id(), "theorbo-a-14");
         let notes = doc.line.notes();
         assert_eq!(notes.len(), 5);
-        assert_eq!(notes[1].figuring.to_string(), "6");
+        assert_eq!(notes[1].figurings.to_string(), "6");
         let pin = notes[2].pin.unwrap();
         assert_eq!(
             pin.played().collect::<Vec<_>>(),
             [(0, 0), (1, 0), (2, 2), (5, 0)]
         );
-        assert!(notes[3].figuring.is_empty() && notes[3].pin.is_some());
-        assert_eq!(notes[4].figuring.to_string(), "6+ 4");
+        assert!(notes[3].figurings.is_empty() && notes[3].pin.is_some());
+        assert_eq!(notes[4].figurings.to_string(), "6+ 4");
     }
 
     #[test]
@@ -205,7 +205,7 @@ Bb2 | 6+ 4
         let text =
             "\n  intavolatura 1\nkey: C major\ninstrument: theorbo-a-14\n\n  C3 |  6 5  \n\n";
         let doc = read(text).unwrap();
-        assert_eq!(doc.line.notes()[0].figuring.to_string(), "6 5");
+        assert_eq!(doc.line.notes()[0].figurings.to_string(), "6 5");
     }
 
     #[test]
@@ -229,7 +229,7 @@ Bb2 | 6+ 4
                 "unknown header",
             ),
             (format!("{header}C3\nX9\n"), 6, "invalid pitch"),
-            (format!("{header}C3 | 8\n"), 5, "invalid figuring"),
+            (format!("{header}C3 | 1\n"), 5, "invalid figuring"),
             (format!("{header}C3 | | pin 15:0\n"), 5, "no such course"),
             (
                 format!("{header}C3 | | pin 7:2\n"),

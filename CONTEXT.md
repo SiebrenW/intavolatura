@@ -17,8 +17,12 @@ The single major or minor key of a bass line, shown as its key signature; figure
 A single number, optionally with an accidental, that names an interval above the bass note. A lone accidental is a figure for the 3rd. A ♯, ♭ or raised figure moves the key's note a semitone up or down; a ♮ means the plain letter.
 
 **Figuring**:
-The full set of figures under one bass note; an empty figuring means 5/3.
+The set of figures sounding together over a bass note; an empty figuring means 5/3. A bass note carries one figuring, or several in sequence for a suspension.
 _Avoid_: Figures (for the set), chord symbol
+
+**Suspension**:
+A bass note with several figurings in sequence, where a dissonant voice resolves by step while the other voices hold (4–3, 7–6, 9–8). One fingering covers the whole suspension: only the resolving voices move.
+_Avoid_: Retardation, changing figures
 
 **Leading-tone hint**:
 A faded, bracketed accidental such as (♯) under a bass note in a minor key, where the figuring leaves the 3rd unmarked but a raised 3rd is likely. A helper only: it never changes the chord, which always follows the key unless a figure says otherwise.

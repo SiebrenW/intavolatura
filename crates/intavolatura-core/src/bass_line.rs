@@ -1,6 +1,6 @@
 //! The bass line being edited, its editing commands and undo/redo.
 
-use crate::figuring::Figuring;
+use crate::figuring::Figurings;
 use crate::fingering::Fingering;
 use crate::key::Key;
 use crate::pitch::{Accidental, Pitch};
@@ -10,7 +10,8 @@ use crate::pitch::{Accidental, Pitch};
 pub struct BassNote {
     /// The bass as written, including its octave.
     pub pitch: Pitch,
-    pub figuring: Figuring,
+    /// One figuring, or several in sequence for a suspension.
+    pub figurings: Figurings,
     pub pin: Option<Fingering>,
 }
 
@@ -19,7 +20,7 @@ impl BassNote {
     pub fn new(pitch: Pitch) -> BassNote {
         BassNote {
             pitch,
-            figuring: Figuring::empty(),
+            figurings: Figurings::default(),
             pin: None,
         }
     }
@@ -150,8 +151,8 @@ impl Editor {
     }
 
     /// Sets the figuring, dropping the pin if it changed.
-    pub fn set_figuring(&mut self, index: usize, figuring: Figuring) -> bool {
-        self.change_chord(index, |note| note.figuring = figuring)
+    pub fn set_figurings(&mut self, index: usize, figurings: Figurings) -> bool {
+        self.change_chord(index, |note| note.figurings = figurings)
     }
 
     /// Pins a fingering to the bass note, or unpins it with `None`.
@@ -269,11 +270,11 @@ mod tests {
     fn changing_the_chord_drops_the_pin_and_undo_restores_it() {
         let mut editor = editor_with(&["D3"]);
         editor.set_pin(0, some_pin());
-        editor.set_figuring(0, "6".parse().unwrap());
+        editor.set_figurings(0, "6".parse().unwrap());
         assert_eq!(editor.line().notes()[0].pin, None);
         editor.undo();
         assert_eq!(editor.line().notes()[0].pin, some_pin());
-        assert!(editor.line().notes()[0].figuring.is_empty());
+        assert!(editor.line().notes()[0].figurings.is_empty());
 
         editor.step_pitch(0, 1);
         assert_eq!(editor.line().notes()[0].pin, None);
@@ -296,7 +297,7 @@ mod tests {
     fn unchanged_edits_are_not_recorded() {
         let mut editor = editor_with(&["D3"]);
         assert!(!editor.set_pitch(0, "D3".parse().unwrap()));
-        assert!(!editor.set_figuring(0, Figuring::empty()));
+        assert!(!editor.set_figurings(0, Figurings::default()));
         assert!(!editor.set_key(key("D", Mode::Major)));
         assert!(!editor.set_pin(0, None));
         // Only the insert is in the history.
@@ -308,7 +309,7 @@ mod tests {
     fn undo_and_redo_walk_the_history() {
         let mut editor = editor_with(&["D3", "A2", "B2"]);
         editor.remove(1);
-        editor.set_figuring(1, "6".parse().unwrap());
+        editor.set_figurings(1, "6".parse().unwrap());
         assert_eq!(pitches(&editor), ["D3", "B2"]);
 
         editor.undo();
@@ -317,7 +318,7 @@ mod tests {
         editor.redo();
         assert_eq!(pitches(&editor), ["D3", "B2"]);
         editor.redo();
-        assert_eq!(editor.line().notes()[1].figuring.to_string(), "6");
+        assert_eq!(editor.line().notes()[1].figurings.to_string(), "6");
         assert!(!editor.redo());
     }
 

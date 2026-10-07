@@ -53,6 +53,10 @@ pub enum Shape {
     FourThree,
     /// 4/2, or 2, 6/4/2.
     FourTwo,
+    /// 5/4, also written 4: the suspended 4th.
+    FiveFour,
+    /// 9/5/3, also written 9, 9/5 or 9/3: the suspended 9th.
+    Nine,
 }
 
 impl Shape {
@@ -66,13 +70,15 @@ impl Shape {
             Shape::SixFive => &[3, 5, 6],
             Shape::FourThree => &[3, 4, 6],
             Shape::FourTwo => &[2, 4, 6],
+            Shape::FiveFour => &[4, 5],
+            Shape::Nine => &[3, 5, 9],
         }
     }
 
     /// The shape written with exactly these intervals, given as a bitmask
     /// with bit `n` set for interval `n`.
-    fn from_written(mask: u8) -> Option<Shape> {
-        const fn m(intervals: &[u8]) -> u8 {
+    fn from_written(mask: u16) -> Option<Shape> {
+        const fn m(intervals: &[u8]) -> u16 {
             let mut mask = 0;
             let mut i = 0;
             while i < intervals.len() {
@@ -81,12 +87,24 @@ impl Shape {
             }
             mask
         }
-        const FIVE_THREE: [u8; 4] = [m(&[]), m(&[5]), m(&[3]), m(&[5, 3])];
-        const SIX: [u8; 2] = [m(&[6]), m(&[6, 3])];
-        const SEVEN: [u8; 4] = [m(&[7]), m(&[7, 5]), m(&[7, 3]), m(&[7, 5, 3])];
-        const SIX_FIVE: [u8; 2] = [m(&[6, 5]), m(&[6, 5, 3])];
-        const FOUR_THREE: [u8; 2] = [m(&[4, 3]), m(&[6, 4, 3])];
-        const FOUR_TWO: [u8; 3] = [m(&[2]), m(&[4, 2]), m(&[6, 4, 2])];
+        // An 8 (the octave) only doubles the bass, so it adds no chord tone.
+        const FIVE_THREE: [u16; 8] = [
+            m(&[]),
+            m(&[5]),
+            m(&[3]),
+            m(&[5, 3]),
+            m(&[8]),
+            m(&[8, 5]),
+            m(&[8, 3]),
+            m(&[8, 5, 3]),
+        ];
+        const SIX: [u16; 2] = [m(&[6]), m(&[6, 3])];
+        const SEVEN: [u16; 4] = [m(&[7]), m(&[7, 5]), m(&[7, 3]), m(&[7, 5, 3])];
+        const SIX_FIVE: [u16; 2] = [m(&[6, 5]), m(&[6, 5, 3])];
+        const FOUR_THREE: [u16; 2] = [m(&[4, 3]), m(&[6, 4, 3])];
+        const FOUR_TWO: [u16; 3] = [m(&[2]), m(&[4, 2]), m(&[6, 4, 2])];
+        const FIVE_FOUR: [u16; 2] = [m(&[4]), m(&[5, 4])];
+        const NINE: [u16; 4] = [m(&[9]), m(&[9, 5]), m(&[9, 3]), m(&[9, 5, 3])];
 
         let shape = if FIVE_THREE.contains(&mask) {
             Shape::FiveThree
@@ -102,6 +120,10 @@ impl Shape {
             Shape::FourThree
         } else if FOUR_TWO.contains(&mask) {
             Shape::FourTwo
+        } else if FIVE_FOUR.contains(&mask) {
+            Shape::FiveFour
+        } else if NINE.contains(&mask) {
+            Shape::Nine
         } else {
             return None;
         };
@@ -188,7 +210,7 @@ impl FromStr for Figuring {
             parse_group(group, &mut figures)?;
         }
 
-        let mut mask = 0u8;
+        let mut mask = 0u16;
         for figure in &figures {
             let bit = 1 << figure.interval;
             if mask & bit != 0 {
@@ -200,6 +222,67 @@ impl FromStr for Figuring {
 
         figures.sort_by(|a, b| b.interval.cmp(&a.interval));
         Ok(Figuring { figures, shape })
+    }
+}
+
+/// The figurings over one bass note, in the order they sound; more than one
+/// makes a suspension. Never empty.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Figurings(Vec<Figuring>);
+
+impl Figurings {
+    pub fn single(figuring: Figuring) -> Figurings {
+        Figurings(vec![figuring])
+    }
+
+    /// The figurings in order; there is always at least one.
+    pub fn parts(&self) -> &[Figuring] {
+        &self.0
+    }
+
+    pub fn is_suspension(&self) -> bool {
+        self.0.len() > 1
+    }
+
+    /// A single empty figuring: a 5/3 chord with nothing written.
+    pub fn is_empty(&self) -> bool {
+        matches!(&self.0[..], [only] if only.is_empty())
+    }
+}
+
+impl Default for Figurings {
+    fn default() -> Figurings {
+        Figurings::single(Figuring::empty())
+    }
+}
+
+impl fmt::Display for Figurings {
+    /// Canonical input text: each figuring's canonical form, joined by `-`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, figuring) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str("-")?;
+            }
+            write!(f, "{figuring}")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for Figurings {
+    type Err = ParseFiguringError;
+
+    /// Parses figurings separated by dashes, such as `4-3` or `6 4-5 3`.
+    fn from_str(s: &str) -> Result<Figurings, ParseFiguringError> {
+        let parts: Vec<&str> = s.split('-').collect();
+        if parts.len() > 1 && parts.iter().any(|p| p.trim().is_empty()) {
+            return Err(ParseFiguringError::EmptyPart);
+        }
+        parts
+            .into_iter()
+            .map(str::parse)
+            .collect::<Result<Vec<Figuring>, _>>()
+            .map(Figurings)
     }
 }
 
@@ -223,7 +306,7 @@ fn parse_group(group: &str, figures: &mut Vec<Figure>) -> Result<(), ParseFiguri
     for (i, &c) in chars.iter().enumerate() {
         if let Some(interval) = c.to_digit(10) {
             let interval = interval as u8;
-            if !(2..=7).contains(&interval) {
+            if !(2..=9).contains(&interval) {
                 return Err(ParseFiguringError::UnsupportedNumber(interval));
             }
             figures.push(Figure {
@@ -276,7 +359,7 @@ fn attach_suffix(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParseFiguringError {
     InvalidCharacter(char),
-    /// A figure outside 2–7.
+    /// A figure outside 2–9.
     UnsupportedNumber(u8),
     /// An accidental that belongs to no figure, or a second one on a figure.
     DanglingAccidental,
@@ -284,6 +367,8 @@ pub enum ParseFiguringError {
     DuplicateInterval(u8),
     /// A combination of figures that is not a supported chord.
     UnsupportedFiguring,
+    /// Nothing between two dashes, or before or after one.
+    EmptyPart,
 }
 
 impl fmt::Display for ParseFiguringError {
@@ -294,6 +379,7 @@ impl fmt::Display for ParseFiguringError {
             ParseFiguringError::DanglingAccidental => f.write_str("accidental without a figure"),
             ParseFiguringError::DuplicateInterval(n) => write!(f, "figure {n} written twice"),
             ParseFiguringError::UnsupportedFiguring => f.write_str("unsupported figuring"),
+            ParseFiguringError::EmptyPart => f.write_str("empty figuring before or after a dash"),
         }
     }
 }
@@ -393,21 +479,62 @@ mod tests {
         let cases = [
             ("x", InvalidCharacter('x')),
             ("6a", InvalidCharacter('a')),
-            ("8", UnsupportedNumber(8)),
             ("0", UnsupportedNumber(0)),
-            ("9", UnsupportedNumber(9)),
+            ("1", UnsupportedNumber(1)),
+            ("9 7", UnsupportedFiguring),
+            ("8 6", UnsupportedFiguring),
             ("#b6", DanglingAccidental),
             ("6#b", DanglingAccidental),
             ("+", DanglingAccidental),
             ("#6+", DanglingAccidental),
             ("6 6", DuplicateInterval(6)),
             ("4 3 #", DuplicateInterval(3)),
-            ("5 4", UnsupportedFiguring),
+            ("5 2", UnsupportedFiguring),
             ("4 2 #", UnsupportedFiguring),
         ];
         for (s, error) in cases {
             assert_eq!(s.parse::<Figuring>(), Err(error), "{s:?}");
         }
+    }
+
+    #[test]
+    fn suspension_shapes_parse() {
+        let cases = [
+            ("4", Shape::FiveFour),
+            ("5 4", Shape::FiveFour),
+            ("9", Shape::Nine),
+            ("9 5 3", Shape::Nine),
+            ("8", Shape::FiveThree),
+            ("8 #", Shape::FiveThree),
+        ];
+        for (s, shape) in cases {
+            assert_eq!(parse(s).shape(), shape, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn dashes_separate_figurings_in_sequence() {
+        let f = |s: &str| s.parse::<Figurings>();
+        let shapes = |s: &str| {
+            f(s).unwrap()
+                .parts()
+                .iter()
+                .map(Figuring::shape)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shapes("4-3"), [Shape::FiveFour, Shape::FiveThree]);
+        assert_eq!(shapes("7-6"), [Shape::Seven, Shape::Six]);
+        assert_eq!(shapes("9-8"), [Shape::Nine, Shape::FiveThree]);
+        assert_eq!(shapes("6 4-5 3"), [Shape::SixFour, Shape::FiveThree]);
+        assert_eq!(shapes("6"), [Shape::Six]);
+        assert!(!f("6").unwrap().is_suspension() && f("4-3").unwrap().is_suspension());
+        assert!(f("").unwrap().is_empty());
+        assert_eq!(f("4-"), Err(ParseFiguringError::EmptyPart));
+        assert_eq!(f("-3"), Err(ParseFiguringError::EmptyPart));
+        assert_eq!(f("4--3"), Err(ParseFiguringError::EmptyPart));
+        assert_eq!(f("4-8 6"), Err(ParseFiguringError::UnsupportedFiguring));
+        assert_eq!(f("7 #-6 #").unwrap().to_string(), "7 #-6 #");
+        assert_eq!(f("4 - 3").unwrap().to_string(), "4-3");
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use intavolatura_core::file_format::{self, Document};
 use intavolatura_core::{
-    BassLine, BassNote, Editor, Figuring, Instrument, Key, Letter, Pitch, Realization, Settings,
+    BassLine, BassNote, Editor, Figurings, Instrument, Key, Letter, Pitch, Realization, Settings,
     realize,
 };
 
@@ -159,7 +159,13 @@ impl App {
     }
 
     pub fn columns(&self) -> Columns {
-        Columns::new(self.line().key(), self.line().notes().len())
+        let parts: Vec<usize> = self
+            .line()
+            .notes()
+            .iter()
+            .map(|n| n.figurings.parts().len())
+            .collect();
+        Columns::new(self.line().key(), &parts)
     }
 
     pub fn scene(&self) -> view::Scene {
@@ -182,7 +188,7 @@ impl App {
         };
         let note = &self.line().notes()[index];
         let (_, _, realization) = &self.realizations[index];
-        let figuring = note.figuring.to_string();
+        let figuring = note.figurings.to_string();
         let fingering = match realization.shown {
             None => "no playable fingering".to_string(),
             Some(shown) => {
@@ -194,9 +200,17 @@ impl App {
                         format!("{}/{}", i + 1, realization.candidates.len())
                     });
                 let pinned = if note.pin.is_some() { ", pinned" } else { "" };
-                let voicing: Vec<String> =
-                    realization.voicing.iter().map(Pitch::to_string).collect();
-                format!("fingering {position}{pinned}: {}", voicing.join(" "))
+                // Each part's notes; a suspension's parts joined by an arrow.
+                let parts: Vec<String> = realization
+                    .parts
+                    .iter()
+                    .map(|part| {
+                        let notes: Vec<String> =
+                            part.notes.iter().map(|(p, _)| p.to_string()).collect();
+                        notes.join(" ")
+                    })
+                    .collect();
+                format!("fingering {position}{pinned}: {}", parts.join(" → "))
             }
         };
         let figuring = if figuring.is_empty() {
@@ -301,17 +315,17 @@ impl App {
     /// The canonical text of the selected note's figuring, for editing.
     pub fn selected_figuring_text(&self) -> String {
         self.selected
-            .map(|i| self.line().notes()[i].figuring.to_string())
+            .map(|i| self.line().notes()[i].figurings.to_string())
             .unwrap_or_default()
     }
 
     /// Applies typed figuring text; on invalid text keeps editing and
     /// returns false.
     pub fn accept_figuring(&mut self, text: &str) -> bool {
-        let (Some(i), Ok(figuring)) = (self.selected, text.parse::<Figuring>()) else {
+        let (Some(i), Ok(figurings)) = (self.selected, text.parse::<Figurings>()) else {
             return false;
         };
-        self.edit(|e| e.set_figuring(i, figuring));
+        self.edit(|e| e.set_figurings(i, figurings));
         self.editing = false;
         true
     }
@@ -394,7 +408,7 @@ mod tests {
         app.click(app.columns().center(0), y(22));
         app.click(app.columns().center(1), y(19));
         app.click(app.columns().center(0), y(21));
-        app.click(app.columns().left + COLUMN_WIDTH, y(18));
+        app.click(app.columns().left(0) + COLUMN_WIDTH, y(18));
         let pitches: Vec<String> = app
             .line()
             .notes()
@@ -429,11 +443,11 @@ mod tests {
         app.click(app.columns().center(0), y(19)); // A2
         assert!(app.key(Input::Enter, false, false));
         assert!(app.editing);
-        assert!(!app.accept_figuring("8"));
+        assert!(!app.accept_figuring("1"));
         assert!(app.editing);
         assert!(app.accept_figuring("#"));
         assert!(!app.editing);
-        assert_eq!(app.line().notes()[0].figuring.to_string(), "#");
+        assert_eq!(app.line().notes()[0].figurings.to_string(), "#");
     }
 
     #[test]

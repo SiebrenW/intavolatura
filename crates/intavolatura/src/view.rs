@@ -5,7 +5,7 @@
 //! on the baseline, so a glyph centred on `y` sits on that staff position.
 
 use intavolatura_core::{
-    Accidental, BassLine, Figure, FigureAccidental, Fingering, Instrument, Key, Pitch, Realization,
+    Accidental, BassLine, Figure, FigureAccidental, Instrument, Key, Pitch, Realization,
 };
 
 /// One staff space.
@@ -69,56 +69,116 @@ pub struct Bar {
     pub knockout: bool,
 }
 
+/// A tie: a filled curve within the box at `(x, y)`, as SVG path commands
+/// in that box's pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tie {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub commands: String,
+}
+
+impl Tie {
+    /// A tie curving down from `x1` to `x2`, hanging below `y`.
+    fn below(x1: f32, x2: f32, y: f32) -> Tie {
+        let (width, height) = (x2 - x1, 0.6 * SPACE);
+        let w = width;
+        let (h, inner) = (height, height - 1.6);
+        Tie {
+            x: x1,
+            y,
+            width,
+            height,
+            commands: format!(
+                "M 0 0 Q {mid} {outer} {w} 0 Q {mid} {inner2} 0 0 Z",
+                mid = w / 2.0,
+                outer = 2.0 * h,
+                inner2 = 2.0 * inner,
+            ),
+        }
+    }
+}
+
 /// Everything to draw, plus the size of the scrollable content.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub glyphs: Vec<Glyph>,
     pub bars: Vec<Bar>,
+    pub ties: Vec<Tie>,
     pub width: f32,
     pub height: f32,
 }
 
-/// Horizontal layout shared by every row.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Horizontal layout shared by every row. A column is one bass note; a
+/// suspension's column holds one part per figuring, side by side.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Columns {
-    /// Left edge of the first column.
-    pub left: f32,
-    pub count: usize,
+    /// Left edge of each column, followed by the right edge of the last.
+    edges: Vec<f32>,
 }
 
 impl Columns {
-    pub fn new(key: Key, count: usize) -> Columns {
+    /// Columns for bass notes with `parts[i]` figurings each.
+    pub fn new(key: Key, parts: &[usize]) -> Columns {
         let accidentals = key.signature().unsigned_abs() as f32;
-        Columns {
-            left: KEY_SIGNATURE_X + accidentals * KEY_SIGNATURE_STEP + 16.0,
-            count,
+        let mut edges = vec![KEY_SIGNATURE_X + accidentals * KEY_SIGNATURE_STEP + 16.0];
+        for &n in parts {
+            let last = *edges.last().expect("never empty");
+            edges.push(last + n.max(1) as f32 * COLUMN_WIDTH);
+        }
+        Columns { edges }
+    }
+
+    pub fn count(&self) -> usize {
+        self.edges.len() - 1
+    }
+
+    /// Left edge of a column, or where the next one would start.
+    pub fn left(&self, index: usize) -> f32 {
+        self.edges[index.min(self.count())]
+    }
+
+    /// Width of a column; past the last, the empty column for appending.
+    pub fn width_of(&self, index: usize) -> f32 {
+        if index < self.count() {
+            self.edges[index + 1] - self.edges[index]
+        } else {
+            COLUMN_WIDTH
         }
     }
 
     pub fn center(&self, index: usize) -> f32 {
-        self.left + (index as f32 + 0.5) * COLUMN_WIDTH
+        self.left(index) + self.width_of(index) / 2.0
+    }
+
+    /// Centre of part `part` within a column.
+    pub fn part_x(&self, index: usize, part: usize) -> f32 {
+        self.left(index) + (part as f32 + 0.5) * COLUMN_WIDTH
     }
 
     /// Content width, leaving one empty column to click into for appending.
     pub fn width(&self) -> f32 {
-        self.left + (self.count as f32 + 1.0) * COLUMN_WIDTH + SPACE
+        self.left(self.count()) + COLUMN_WIDTH + SPACE
     }
 
     /// What a click at `x` means for the bass line.
     pub fn hit(&self, x: f32) -> ColumnHit {
-        let offset = (x - self.left) / COLUMN_WIDTH;
-        if offset < 0.0 {
+        let margin = 0.2 * COLUMN_WIDTH;
+        if x < self.left(0) {
             return ColumnHit::Insert(0);
         }
-        let index = offset.floor() as usize;
-        if index >= self.count {
-            return ColumnHit::Insert(self.count);
-        }
-        // The outer fifth of a column on either side inserts at that boundary.
-        match offset.fract() {
-            f if f < 0.2 => ColumnHit::Insert(index),
-            f if f > 0.8 => ColumnHit::Insert(index + 1),
-            _ => ColumnHit::Column(index),
+        let Some(index) = (0..self.count()).find(|&i| x < self.edges[i + 1]) else {
+            return ColumnHit::Insert(self.count());
+        };
+        // Near either edge of a column, a click inserts at that boundary.
+        if x - self.edges[index] < margin {
+            ColumnHit::Insert(index)
+        } else if self.edges[index + 1] - x < margin {
+            ColumnHit::Insert(index + 1)
+        } else {
+            ColumnHit::Column(index)
         }
     }
 }
@@ -159,7 +219,12 @@ pub fn scene(
     options: &ViewOptions,
 ) -> Scene {
     let key = line.key();
-    let columns = Columns::new(key, line.notes().len());
+    let parts: Vec<usize> = line
+        .notes()
+        .iter()
+        .map(|n| n.figurings.parts().len())
+        .collect();
+    let columns = Columns::new(key, &parts);
     let mut scene = Scene {
         width: columns.width(),
         height: CONTENT_BOTTOM,
@@ -176,13 +241,24 @@ pub fn scene(
     staff.draw_key_signature(&mut scene, key, BASS_TOP_POSITION);
 
     for (index, note) in line.notes().iter().enumerate() {
-        let x = columns.center(index);
-        staff.draw_note(&mut scene, x, note.pitch, key, 0.0, 0);
-        let hint = realizations
-            .get(index)
-            .and_then(|r| r.chord.leading_tone_hint())
-            .filter(|_| options.show_hints);
-        draw_figuring(&mut scene, x, note.figuring.figures(), hint.is_some());
+        // The bass sounds once, under the first figuring.
+        staff.draw_note(
+            &mut scene,
+            columns.part_x(index, 0),
+            note.pitch,
+            key,
+            0.0,
+            Some(0),
+        );
+        for (part, figuring) in note.figurings.parts().iter().enumerate() {
+            let hint = realizations
+                .get(index)
+                .and_then(|r| r.parts.get(part))
+                .and_then(|p| p.chord.leading_tone_hint())
+                .filter(|_| options.show_hints);
+            let x = columns.part_x(index, part);
+            draw_figuring(&mut scene, x, figuring.figures(), hint.is_some());
+        }
     }
 
     let treble = Staff {
@@ -216,20 +292,41 @@ pub fn scene(
     }
 
     for (index, realization) in realizations.iter().enumerate() {
-        let x = columns.center(index);
-        draw_voicing(&mut scene, x, &realization.voicing, key, &treble, &bass);
-        match realization.shown {
-            Some(fingering) => {
-                draw_fingering(&mut scene, x, &fingering, instrument, options.tablature)
-            }
-            None => scene.glyphs.push(Glyph {
-                x,
+        if realization.shown.is_none() {
+            scene.glyphs.push(Glyph {
+                x: columns.center(index),
                 y: TAB_TOP + 2.5 * TAB_LINE,
                 text: "no fingering".to_string(),
                 music: false,
                 size: 11.0,
                 faded: true,
-            }),
+            });
+            continue;
+        }
+        for (part, sounding) in realization.parts.iter().enumerate() {
+            let x = columns.part_x(index, part);
+            draw_voicing(&mut scene, x, &sounding.notes, key, &treble, &bass);
+            if part > 0 {
+                let previous = columns.part_x(index, part - 1);
+                for (pitch, _) in sounding.notes.iter().filter(|(_, struck)| !struck) {
+                    let staff = if pitch.staff_position() >= MIDDLE_C_POSITION {
+                        &treble
+                    } else {
+                        &bass
+                    };
+                    let y = staff.y(pitch.staff_position()) + 0.6 * SPACE;
+                    scene
+                        .ties
+                        .push(Tie::below(previous + 0.8 * SPACE, x - 0.8 * SPACE, y));
+                }
+            }
+            draw_fingering(
+                &mut scene,
+                x,
+                &sounding.struck,
+                instrument,
+                options.tablature,
+            );
         }
     }
     scene
@@ -240,25 +337,33 @@ pub fn scene(
 fn draw_voicing(
     scene: &mut Scene,
     x: f32,
-    voicing: &[Pitch],
+    voicing: &[(Pitch, bool)],
     key: Key,
     treble: &Staff,
     bass: &Staff,
 ) {
+    // A held note is tied from the part before, so it needs no accidental.
     let mut notes = voicing.to_vec();
-    notes.sort_by_key(|p| (p.staff_position(), p.semitones()));
-    notes.dedup();
+    notes.sort_by_key(|(p, _)| (p.staff_position(), p.semitones()));
+    notes.dedup_by_key(|(p, _)| *p);
     for (staff, on_treble) in [(treble, true), (bass, false)] {
         let mut previous: Option<(i16, bool)> = None;
         let mut accidentals = 0;
-        for &pitch in notes
+        for &(pitch, struck) in notes
             .iter()
-            .filter(|p| (p.staff_position() >= MIDDLE_C_POSITION) == on_treble)
+            .filter(|(p, _)| (p.staff_position() >= MIDDLE_C_POSITION) == on_treble)
         {
             let position = pitch.staff_position();
             let shifted = previous.is_some_and(|(p, s)| position - p == 1 && !s);
             let shift = if shifted { 1.25 * SPACE } else { 0.0 };
-            if staff.draw_note(scene, x, pitch, key, shift, accidentals % 2) {
+            if staff.draw_note(
+                scene,
+                x,
+                pitch,
+                key,
+                shift,
+                struck.then_some(accidentals % 2),
+            ) {
                 accidentals += 1;
             }
             previous = Some((position, shifted));
@@ -266,19 +371,19 @@ fn draw_voicing(
     }
 }
 
-/// Draws a fingering in tablature: fretted courses on the six lines,
-/// diapasons as signs below.
+/// Draws struck courses and frets in tablature: fretted courses on the six
+/// lines, diapasons as signs below.
 fn draw_fingering(
     scene: &mut Scene,
     x: f32,
-    fingering: &Fingering,
+    struck: &[(usize, u8)],
     instrument: &Instrument,
     style: TablatureStyle,
 ) {
     let courses = instrument.courses();
     let fretted = courses.iter().take_while(|c| !c.is_diapason()).count();
     let mut diapasons = 0;
-    for (course, fret) in fingering.played() {
+    for &(course, fret) in struck {
         if !courses[course].is_diapason() {
             let line = match style {
                 TablatureStyle::Italian => fretted - 1 - course,
@@ -372,8 +477,9 @@ impl Staff {
     /// Draws a whole note with ledger lines and, where the key signature
     /// does not already give it, its accidental. `shift` moves the notehead
     /// sideways, e.g. for the upper note of a second.
-    /// Returns whether an accidental was drawn; `accidental_column` moves it
-    /// further left to keep stacked accidentals apart.
+    /// Returns whether an accidental was drawn. `accidental_column` moves it
+    /// further left to keep stacked accidentals apart; `None` draws none,
+    /// as for a tied note.
     fn draw_note(
         &self,
         scene: &mut Scene,
@@ -381,7 +487,7 @@ impl Staff {
         pitch: Pitch,
         key: Key,
         shift: f32,
-        accidental_column: usize,
+        accidental_column: Option<usize>,
     ) -> bool {
         let position = pitch.staff_position();
         let y = self.y(position);
@@ -401,9 +507,11 @@ impl Staff {
         }
 
         let accidental = pitch.name.accidental;
-        let drawn = accidental != key.signature_accidental(pitch.name.letter);
-        if drawn {
-            let ax = x - 1.6 * SPACE - accidental_column as f32 * 1.1 * SPACE;
+        let column =
+            accidental_column.filter(|_| accidental != key.signature_accidental(pitch.name.letter));
+        let drawn = column.is_some();
+        if let Some(column) = column {
+            let ax = x - 1.6 * SPACE - column as f32 * 1.1 * SPACE;
             scene.glyph(ax, y, accidental_glyph(accidental), true, MUSIC_SIZE);
         }
         drawn
@@ -450,7 +558,9 @@ fn figure_text(figure: &Figure) -> String {
         4 => '\u{EA55}',
         5 => '\u{EA57}',
         6 => '\u{EA5B}',
-        _ => '\u{EA5D}',
+        7 => '\u{EA5D}',
+        8 => '\u{EA60}',
+        _ => '\u{EA61}',
     };
     let raised = |n: u8| match n {
         2 => Some('\u{EA53}'),
@@ -458,6 +568,7 @@ fn figure_text(figure: &Figure) -> String {
         5 => Some('\u{EA58}'),
         6 => Some('\u{EA5C}'),
         7 => Some('\u{EA5E}'),
+        9 => Some('\u{EA62}'),
         _ => None,
     };
     let accidental = |a: FigureAccidental| match a {
@@ -527,7 +638,7 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use intavolatura_core::{BassNote, Mode};
+    use intavolatura_core::{BassNote, Fingering, Mode};
 
     fn key(s: &str) -> Key {
         s.parse().unwrap()
@@ -535,22 +646,33 @@ mod tests {
 
     #[test]
     fn clicks_map_to_columns_and_insert_points() {
-        let columns = Columns::new(key("C major"), 2);
+        let columns = Columns::new(key("C major"), &[1, 1]);
         assert_eq!(columns.hit(0.0), ColumnHit::Insert(0));
         assert_eq!(columns.hit(columns.center(0)), ColumnHit::Column(0));
         assert_eq!(columns.hit(columns.center(1)), ColumnHit::Column(1));
         assert_eq!(
-            columns.hit(columns.left + COLUMN_WIDTH),
+            columns.hit(columns.left(0) + COLUMN_WIDTH),
             ColumnHit::Insert(1)
         );
         assert_eq!(columns.hit(columns.center(2)), ColumnHit::Insert(2));
     }
 
     #[test]
+    fn a_suspension_column_is_wider_with_one_part_per_figuring() {
+        let columns = Columns::new(key("C major"), &[1, 2, 1]);
+        assert_eq!(columns.width_of(1), 2.0 * COLUMN_WIDTH);
+        assert_eq!(columns.part_x(1, 0), columns.left(1) + COLUMN_WIDTH / 2.0);
+        assert_eq!(columns.part_x(1, 1), columns.left(1) + 1.5 * COLUMN_WIDTH);
+        assert_eq!(columns.hit(columns.part_x(1, 1)), ColumnHit::Column(1));
+        assert_eq!(columns.hit(columns.center(2)), ColumnHit::Column(2));
+        assert_eq!(columns.hit(columns.left(2) + 1.0), ColumnHit::Insert(2));
+    }
+
+    #[test]
     fn the_key_signature_pushes_the_columns_right() {
-        let c = Columns::new(key("C major"), 0);
-        let e = Columns::new(key("E major"), 0);
-        assert_eq!(e.left - c.left, 4.0 * KEY_SIGNATURE_STEP);
+        let c = Columns::new(key("C major"), &[]);
+        let e = Columns::new(key("E major"), &[]);
+        assert_eq!(e.left(0) - c.left(0), 4.0 * KEY_SIGNATURE_STEP);
     }
 
     #[test]
@@ -579,7 +701,7 @@ mod tests {
                 pitch.parse().unwrap(),
                 key("C major"),
                 0.0,
-                0,
+                Some(0),
             );
             scene.bars.len()
         };
@@ -601,7 +723,14 @@ mod tests {
         };
         let glyphs = |pitch: &str, k: &str| {
             let mut scene = Scene::default();
-            staff.draw_note(&mut scene, 0.0, pitch.parse().unwrap(), key(k), 0.0, 0);
+            staff.draw_note(
+                &mut scene,
+                0.0,
+                pitch.parse().unwrap(),
+                key(k),
+                0.0,
+                Some(0),
+            );
             scene.glyphs.len()
         };
         assert_eq!(glyphs("F#3", "D major"), 1);
@@ -624,6 +753,8 @@ mod tests {
         assert_eq!(figures("#6 4"), ["\u{EA66}\u{EA5B}", "\u{EA55}"]);
         assert_eq!(figures("6 #"), ["\u{EA5B}", "\u{EA66}"]);
         assert_eq!(figures("3+"), ["\u{EA54}\u{EA6C}"]);
+        assert_eq!(figures("8"), ["\u{EA60}"]);
+        assert_eq!(figures("9"), ["\u{EA61}"]);
     }
 
     fn fingering(stops: &[(usize, u8)]) -> Fingering {
@@ -637,7 +768,8 @@ mod tests {
     fn tab_signs(stops: &[(usize, u8)], style: TablatureStyle) -> Vec<(String, f32)> {
         let mut scene = Scene::default();
         let instrument = intavolatura_core::Instrument::theorbo_in_a();
-        draw_fingering(&mut scene, 0.0, &fingering(stops), &instrument, style);
+        let struck: Vec<(usize, u8)> = fingering(stops).played().collect();
+        draw_fingering(&mut scene, 0.0, &struck, &instrument, style);
         scene.glyphs.into_iter().map(|g| (g.text, g.y)).collect()
     }
 
@@ -700,7 +832,8 @@ mod tests {
 
     fn noteheads(pitches: &[&str], k: &str) -> Vec<Glyph> {
         let (treble, bass) = grand_staff();
-        let voicing: Vec<Pitch> = pitches.iter().map(|p| p.parse().unwrap()).collect();
+        let voicing: Vec<(Pitch, bool)> =
+            pitches.iter().map(|p| (p.parse().unwrap(), true)).collect();
         let mut scene = Scene::default();
         draw_voicing(&mut scene, 0.0, &voicing, key(k), &treble, &bass);
         scene.glyphs
@@ -741,7 +874,7 @@ mod tests {
     fn hints_are_drawn_faded_and_can_be_hidden() {
         let k = key("D minor");
         let mut note = BassNote::new("A2".parse().unwrap());
-        note.figuring = "".parse().unwrap();
+        note.figurings = "".parse().unwrap();
         let line = BassLine::with_notes(k, vec![note.clone()]);
         let instrument = intavolatura_core::Instrument::theorbo_in_a();
         let settings = intavolatura_core::Settings::default();

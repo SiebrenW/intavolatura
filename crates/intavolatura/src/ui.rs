@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Figuring, Key, Mode};
+use intavolatura_core::{Figurings, Key, Mode};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -12,7 +12,7 @@ use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecMod
 use crate::app::{App, Input};
 use crate::preferences::{Preferences, Theme};
 use crate::view::{self, TablatureStyle};
-use crate::{AppWindow, Bar, Glyph};
+use crate::{AppWindow, Bar, Glyph, Tie};
 
 const FILE_TYPE: (&str, &[&str]) = ("Intavolatura bass line", &["intav"]);
 
@@ -152,7 +152,7 @@ pub fn wire(window: &AppWindow, app: App) {
     let weak = window.as_weak();
     window.on_figuring_edited(move |text| {
         weak.unwrap()
-            .set_figuring_error(text.parse::<Figuring>().is_err());
+            .set_figuring_error(text.parse::<Figurings>().is_err());
     });
 
     let s = shared.clone();
@@ -342,6 +342,18 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
             knockout: b.knockout,
         })
         .collect();
+    let ties: Vec<Tie> = scene
+        .ties
+        .into_iter()
+        .map(|t| Tie {
+            x: t.x,
+            y: t.y,
+            width: t.width,
+            height: t.height,
+            commands: t.commands.into(),
+        })
+        .collect();
+    window.set_ties(ModelRc::new(VecModel::from(ties)));
     window.set_glyphs(ModelRc::new(VecModel::from(glyphs)));
     window.set_bars(ModelRc::new(VecModel::from(bars)));
     window.set_content_width(scene.width);
@@ -369,7 +381,8 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_editing(app.editing);
     if let Some(index) = app.selected {
         let center = columns.center(index);
-        window.set_selection_x(center - view::COLUMN_WIDTH / 2.0);
+        window.set_selection_x(columns.left(index));
+        window.set_selection_width(columns.width_of(index));
         window.set_edit_x(center);
         window.set_edit_y(view::FIGURES_TOP - view::SPACE);
         scroll_into_view(window, center);

@@ -34,7 +34,10 @@ Each step is buildable and tested before the next starts.
   - [x] Enter edits the column's figuring box; Esc returns to the column
   - [x] Undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) for every change: notes, figurings, pins, key
 - [x] Figuring input
-  - [x] Supported figurings: empty/5/3/5-3, 6, 6/3, 6/4, 7, 7/5/3, 6/5, 4/3, 6/4/3, 4/2, 2, 6/4/2
+  - [x] Supported figurings: empty/5/3/5-3, 6, 6/3, 6/4, 7, 7/5/3, 6/5, 4/3, 6/4/3, 4/2, 2, 6/4/2; for suspensions also 4 (5/4), 9 (9/5/3) and 8 (the octave)
+  - [x] Suspensions: figurings in sequence joined by a dash (`4-3`, `7-6`, `9-8`, `6 4-5 3`, `4-#`), each a full figuring, shown side by side under one bass note
+  - [x] One fingering per suspension: held voices stay on their course and fret; each resolving voice moves by step, on its own course if it can (else another, ranked lower)
+  - [x] The resolution's tablature shows only the moved notes; on the voicing staff held notes are tied
   - [x] Accidentals on any figure (♯ ♭ ♮), raised figures (6+, slashed 6); a lone accidental applies to the 3rd
   - [x] Figures are literal: always within the key unless an accidental says otherwise
   - [x] Displayed with proper symbols, highest figure on top
@@ -58,7 +61,6 @@ Each step is buildable and tested before the next starts.
 
 ## Later
 
-- Suspensions (4–3, 7–6, 9–8): several figurings in sequence over one bass note, typed with a dash between them (`4-3`, `7-6`, `6 4-5 3`); each part is a full figuring, shown side by side under the note.
 - Rarer figures (9, 9/7, 5/4, ♯4/2, …) and continuation lines.
 - Rhythm, bar lines, voice leading between chords.
 - More instruments: baroque guitar, renaissance lute in G.
@@ -75,6 +77,7 @@ Each step is buildable and tested before the next starts.
 | `#` | lone ♯: raised 3rd |
 | `6 #` | 6 plus raised 3rd (space separates) |
 | *(empty)* | 5/3 |
+| `4-3`, `6 4-5 3` | figurings in sequence (a suspension); each part as above |
 
 Order does not matter. Invalid input (letters, `0`, `8`, …) is highlighted and the previous figuring is kept.
 

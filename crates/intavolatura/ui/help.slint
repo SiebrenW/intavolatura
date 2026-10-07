@@ -206,6 +206,20 @@ export component ShortcutsPanel inherits Rectangle {
                 muted: root.muted;
             }
 
+            Row {
+                keys: "4-3  7-6  9-8";
+                action: "Suspension: figurings in turn, joined by a dash";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "6 4-5 3  4-#";
+                action: "Each part is a full figuring";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
             Text {
                 text: "♯ and ♭ raise or lower the note the key gives; ♮ gives the plain letter.";
                 color: root.muted;

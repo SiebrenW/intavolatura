@@ -41,8 +41,13 @@ impl Chord {
         for &interval in shape.intervals() {
             let figure = figuring.figure(interval);
             let name = note_above(bass, interval, key, figure.and_then(|f| f.accidental));
-            let omittable = interval == 5 && matches!(shape, Shape::FiveThree | Shape::Seven);
-            let dissonant = seventh == Some(interval) || (shape == Shape::SixFour && interval == 4);
+            let omittable = interval == 5
+                && matches!(
+                    shape,
+                    Shape::FiveThree | Shape::Seven | Shape::FiveFour | Shape::Nine
+                );
+            let dissonant =
+                seventh == Some(interval) || suspended_interval(shape) == Some(interval);
             tones.push(ChordTone {
                 interval,
                 name,
@@ -125,14 +130,24 @@ fn seventh_interval(shape: Shape) -> Option<u8> {
         Shape::SixFive => Some(5),
         Shape::FourThree => Some(3),
         Shape::FourTwo => Some(1),
-        Shape::FiveThree | Shape::Six | Shape::SixFour => None,
+        Shape::FiveThree | Shape::Six | Shape::SixFour | Shape::FiveFour | Shape::Nine => None,
+    }
+}
+
+/// Interval above the bass of a dissonance other than a 7th: the 4 of a
+/// 6/4 or 5/4 and the 9 of a 9/5/3.
+fn suspended_interval(shape: Shape) -> Option<u8> {
+    match shape {
+        Shape::SixFour | Shape::FiveFour => Some(4),
+        Shape::Nine => Some(9),
+        _ => None,
     }
 }
 
 /// Interval above the bass of the chord's root.
 fn root_interval(shape: Shape) -> u8 {
     match shape {
-        Shape::FiveThree | Shape::Seven => 1,
+        Shape::FiveThree | Shape::Seven | Shape::FiveFour | Shape::Nine => 1,
         Shape::Six | Shape::SixFive => 6,
         Shape::SixFour | Shape::FourThree => 4,
         Shape::FourTwo => 2,
@@ -197,6 +212,17 @@ mod tests {
             assert_eq!(names(&c), expected, "{bass} {figuring:?}");
             assert_eq!(c.root().to_string(), root, "{bass} {figuring:?}");
         }
+    }
+
+    #[test]
+    fn spells_suspension_chords() {
+        let c = chord("G", "4", "C", Mode::Major);
+        assert_eq!(names(&c), "G C D");
+        assert!(!tone(&c, 4).doublable && tone(&c, 4).required && !tone(&c, 5).required);
+        let c = chord("C", "9", "C", Mode::Major);
+        assert_eq!(names(&c), "C E G D");
+        assert!(!tone(&c, 9).doublable && !tone(&c, 5).required);
+        assert_eq!(c.root().to_string(), "C");
     }
 
     #[test]
