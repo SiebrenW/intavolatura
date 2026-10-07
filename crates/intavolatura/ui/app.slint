@@ -128,6 +128,8 @@ export component AppWindow inherits Window {
 
                 Button {
                     text: "Open";
+                    icon: @image-url("icons/folder-open.svg");
+                    colorize-icon: true;
                     clicked => {
                         root.open-file();
                         main.focus();
@@ -136,6 +138,8 @@ export component AppWindow inherits Window {
 
                 Button {
                     text: "Save";
+                    icon: @image-url("icons/save.svg");
+                    colorize-icon: true;
                     clicked => {
                         root.save-file();
                         main.focus();
@@ -144,6 +148,8 @@ export component AppWindow inherits Window {
 
                 Button {
                     text: "Settings";
+                    icon: @image-url("icons/settings.svg");
+                    colorize-icon: true;
                     clicked => {
                         settings.show();
                     }
@@ -151,6 +157,8 @@ export component AppWindow inherits Window {
 
                 Button {
                     text: "About";
+                    icon: @image-url("icons/info.svg");
+                    colorize-icon: true;
                     clicked => {
                         about.show();
                     }
@@ -330,7 +338,7 @@ export component AppWindow inherits Window {
                 AboutSlint { }
 
                 Text {
-                    text: "Music font: Bravura © Steinberg Media Technologies, SIL Open Font License 1.1";
+                    text: "Music font: Bravura © Steinberg Media Technologies, SIL Open Font License 1.1. Icons: Lucide, ISC License.";
                     wrap: word-wrap;
                     color: #6b6b6b;
                 }
