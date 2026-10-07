@@ -124,7 +124,7 @@ Weights to be tuned against real bass lines.
 ## Tablature: diapason signs (theorbo, courses 7–14)
 
 - French: 7 = `a`, 8 = `/a`, 9 = `//a`, 10 = `///a`, 11–14 = `4`, `5`, `6`, `7`; below the staff.
-- Italian: 7 = `0` on a ledger line below the staff; 8–14 = the course number on an extra ledger line below that.
+- Italian: the staff is upside down (course 1 on the bottom line), so diapasons go above it: 7 = `0` on a ledger line above the staff; 8–14 = the course number on an extra ledger line above that.
 
 ## Technology
 

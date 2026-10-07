@@ -13,6 +13,18 @@ _Avoid_: Root (for the entered note)
 **Key**:
 The single major or minor key of a bass line, shown as its key signature; figures are read as intervals within it unless an accidental says otherwise. Modulations appear only as accidentals.
 
+**Duration**:
+How long a bass note sounds, as a note value (whole, half, quarter, eighth, sixteenth), optionally dotted.
+_Avoid_: Length, rhythm (for a single note)
+
+**Time signature**:
+The single meter of a bass line, such as 4/4, 3/4, 3/2 or 6/8; it decides where bar lines fall.
+_Avoid_: Meter (in code and docs), measure signature
+
+**Bar**:
+A span of the bass line that fills one time signature; bar lines are placed automatically between bars.
+_Avoid_: Measure
+
 **Figure**:
 A single number, optionally with an accidental, that names an interval above the bass note. A lone accidental is a figure for the 3rd. A ♯, ♭ or raised figure moves the key's note a semitone up or down; a ♮ means the plain letter.
 

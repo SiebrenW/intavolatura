@@ -40,7 +40,8 @@ const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
 
 /// Vertical layout of the tablature: six lines for the fretted courses,
 /// diapason signs below.
-const TAB_TOP: f32 = VOICING_BASS_TOP + 10.0 * SPACE;
+/// Room above the tablature for Italian diapason signs (two ledger levels).
+const TAB_TOP: f32 = VOICING_BASS_TOP + 8.0 * SPACE + 3.0 * TAB_LINE;
 const TAB_LINE: f32 = 16.0;
 const TAB_SIZE: f32 = 15.0;
 const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
@@ -409,15 +410,16 @@ fn draw_fingering(
                 diapasons += 1;
             }
             TablatureStyle::Italian => {
-                // Course 7 is 0 on the first ledger line, the others their
-                // course number on a ledger line below.
+                // Italian tablature is upside down, so the diapasons sit above
+                // the staff: course 7 is 0 on the first ledger line, the others
+                // their course number on a ledger line above that.
                 let (level, text) = if ordinal == 0 {
                     (1, "0".to_string())
                 } else {
                     diapasons += 1;
                     (1 + diapasons, (course + 1).to_string())
                 };
-                let y = TAB_BOTTOM + level as f32 * TAB_LINE;
+                let y = TAB_TOP - level as f32 * TAB_LINE;
                 scene.bar(x - 1.4 * SPACE, y - LINE / 2.0, 2.8 * SPACE, LINE);
                 scene.tab_sign(x, y, &text, true);
             }
@@ -812,8 +814,8 @@ mod tests {
         assert_eq!(
             italian,
             [
-                ("0".to_string(), TAB_BOTTOM + TAB_LINE),
-                ("10".to_string(), TAB_BOTTOM + 2.0 * TAB_LINE),
+                ("0".to_string(), TAB_TOP - TAB_LINE),
+                ("10".to_string(), TAB_TOP - 2.0 * TAB_LINE),
             ]
         );
     }
