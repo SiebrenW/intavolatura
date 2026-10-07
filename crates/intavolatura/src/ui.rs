@@ -24,9 +24,11 @@ struct Shared {
     window: Weak<AppWindow>,
     app: Rc<RefCell<App>>,
     keys: Rc<[Key]>,
-    /// A MusicXML score waiting for its part to be chosen: text, file, parts.
-    import: Rc<RefCell<Option<(String, PathBuf, Vec<PartInfo>)>>>,
+    import: Rc<RefCell<Option<PendingImport>>>,
 }
+
+/// A MusicXML score waiting for its part to be chosen: text, file, parts.
+type PendingImport = (String, PathBuf, Vec<PartInfo>);
 
 impl Shared {
     /// Runs `f` on the app, then redraws the window.
