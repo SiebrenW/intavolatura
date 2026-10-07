@@ -1,0 +1,87 @@
+# Intavolatura
+
+A figured bass viewer: the user enters figured bass, and the app realizes the implied chords in staff notation and tablature.
+
+## Language
+
+Pitches are named in scientific pitch notation: C4 is middle C, octave numbers change between B and C (B3 is directly below C4).
+
+**Bass note**:
+The written note the user enters; the lowest sounding note of the chord, from which all figures are counted. It always has an explicit spelling (letter plus accidental), and may sound an octave below where it is written.
+_Avoid_: Root (for the entered note)
+
+**Key**:
+The single major or minor key of a bass line, shown as its key signature; figures are read as intervals within it unless an accidental says otherwise. Modulations appear only as accidentals.
+
+**Figure**:
+A single number, optionally with an accidental, that names an interval above the bass note. A lone accidental is a figure for the 3rd. A ♯, ♭ or raised figure moves the key's note a semitone up or down; a ♮ means the plain letter.
+
+**Figuring**:
+The full set of figures under one bass note; an empty figuring means 5/3.
+_Avoid_: Figures (for the set), chord symbol
+
+**Leading-tone hint**:
+A faded, bracketed accidental such as (♯) under a bass note in a minor key, where the figuring leaves the 3rd unmarked but a raised 3rd is likely. A helper only: it never changes the chord, which always follows the key unless a figure says otherwise.
+_Avoid_: Warning, auto-sharp
+
+**Bass line**:
+An ordered sequence of bass notes, each carrying its own figuring; the unit the user edits.
+
+**Chord**:
+The set of note names, without octaves, implied by a bass note and its figuring in the key.
+
+**Voicing**:
+The concrete sounding notes, with octaves, of a fingering. The voicing staff shows the voicing of the fingering the tablature shows.
+_Avoid_: Realization (for the notes themselves)
+
+**Fingering**:
+A course and fret (or open diapason) for every note of a chord on a given instrument. It determines the voicing; several fingerings can share one voicing.
+_Avoid_: Shape, grip, position
+
+**Candidate fingering**:
+A fingering of a chord that is playable on the current instrument and contains the notes the figuring requires; candidates are ranked by how good the app judges them to be.
+
+**Pinned fingering**:
+A candidate fingering the user has chosen for a bass note, overriding the top-ranked candidate. Dropped when the bass note or figuring changes, since it belonged to a different chord.
+_Avoid_: Override, custom voicing, pinned voicing
+
+**Root**:
+The note a chord is built on when stacked in thirds; derived from the bass note and figures, never entered directly. Differs from the bass note when the chord is inverted.
+
+### Views
+
+**Bass staff**:
+The input staff showing the bass line as written, with its figurings.
+
+**Voicing staff**:
+A grand staff showing each chord's voicing as it sounds; its bass may differ by an octave from the bass staff.
+_Avoid_: Chord staff, realization staff
+
+**Column**:
+One bass note together with everything shown for it in every view; the unit of selection and navigation.
+
+### Instruments
+
+**Instrument**:
+A plucked instrument the tablature is written for, defined by its courses, their tuning, and how many frets each fretted course has (courses may differ, e.g. extra frets on the soundboard for the top course). First target: the 14-course theorbo in A.
+
+**Course**:
+A single string or a pair of strings played as one unit; the thing a tablature line or diapason sign refers to.
+_Avoid_: String (when a pair is meant)
+
+**Fretted course**:
+A course that runs over the fingerboard and can be stopped at a fret.
+
+**Diapason**:
+A bass course that lies off the fingerboard and only sounds its open pitch.
+_Avoid_: Bass string, open bass
+
+**Barré**:
+One finger stopping several courses at the same fret; counts as a single finger of the left hand.
+
+**Tablature style**:
+The way course-and-fret positions are drawn: **Italian** (numbers, top course on the bottom line) or **French** (letters, top course on the top line). A display choice; the positions themselves are the same.
+_Avoid_: Tab format, notation (for this choice)
+
+**Re-entrant tuning**:
+A tuning in which a course nearer the treble side sounds lower than its neighbour, as with the theorbo's top two courses being dropped an octave.

@@ -1,0 +1,7 @@
+[package]
+name = "intavolatura"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+intavolatura-core = { path = "../intavolatura-core" }

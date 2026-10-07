@@ -1,0 +1,6 @@
+[package]
+name = "intavolatura-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
