@@ -54,7 +54,13 @@ const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
 /// and rhythm signs above those.
 const TAB_TOP: f32 = VOICING_BASS_TOP + 9.0 * SPACE + 6.0 * TAB_LINE;
 const TAB_LINE: f32 = 16.0;
-const TAB_SIZE: f32 = 15.0;
+/// Size of the historical tablature signs, a little under Bravura's four
+/// staff spaces per em with a tablature line gap as the space.
+const TAB_MUSIC_SIZE: f32 = 3.0 * TAB_LINE;
+const TAB_GLYPH_WIDTH: f32 = 0.55 * TAB_LINE;
+/// Bravura sets the signs on their baseline; this lowers them so they are
+/// centred on the line instead.
+const TAB_GLYPH_DROP: f32 = 0.36 * TAB_LINE;
 const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
 pub const CONTENT_BOTTOM: f32 = TAB_BOTTOM + 4.0 * TAB_LINE;
 
@@ -506,7 +512,7 @@ fn draw_fingering(
                 TablatureStyle::French => course,
             };
             let text = match style {
-                TablatureStyle::Italian => fret.to_string(),
+                TablatureStyle::Italian => italian_number(fret as usize),
                 TablatureStyle::French => french_letter(fret).to_string(),
             };
             scene.tab_sign(x, TAB_TOP + line as f32 * TAB_LINE, &text, true);
@@ -516,9 +522,13 @@ fn draw_fingering(
         let ordinal = course - fretted; // 0 for course 7
         match style {
             TablatureStyle::French => {
+                // Courses 7–10 have their own signs (a, /a, //a, ///a);
+                // courses 11–14 are numbered 4–7.
                 let text = match ordinal {
-                    0..=3 => format!("{}a", "/".repeat(ordinal)),
-                    n => n.to_string(),
+                    0..=3 => char::from_u32(0xEBCD + ordinal as u32)
+                        .expect("SMuFL code point")
+                        .to_string(),
+                    n => italian_number(n),
                 };
                 let y = TAB_BOTTOM + (1 + diapasons) as f32 * TAB_LINE;
                 scene.tab_sign(x, y, &text, false);
@@ -529,10 +539,10 @@ fn draw_fingering(
                 // the staff: course 7 is 0 on the first ledger line, the others
                 // their course number on a ledger line above that.
                 let (level, text) = if ordinal == 0 {
-                    (1, "0".to_string())
+                    (1, italian_number(0))
                 } else {
                     diapasons += 1;
-                    (1 + diapasons, (course + 1).to_string())
+                    (1 + diapasons, italian_number(course + 1))
                 };
                 let y = TAB_TOP - level as f32 * TAB_LINE;
                 scene.bar(x - 1.4 * SPACE, y - LINE / 2.0, 2.8 * SPACE, LINE);
@@ -542,10 +552,21 @@ fn draw_fingering(
     }
 }
 
-/// French tablature letter for a fret: a for open, then b, c … with no j.
+/// French tablature letter for a fret, in Bravura's historical forms: a for
+/// open, then b, c … n (there is no j).
 fn french_letter(fret: u8) -> char {
-    const LETTERS: &[u8] = b"abcdefghiklmnop";
-    LETTERS.get(fret as usize).map_or('?', |&b| b as char)
+    match fret {
+        0..=12 => char::from_u32(0xEBC0 + fret as u32).expect("SMuFL code point"),
+        _ => '?',
+    }
+}
+
+/// A number in Bravura's historical Italian tablature digits.
+fn italian_number(n: usize) -> String {
+    n.to_string()
+        .chars()
+        .map(|d| char::from_u32(0xEBE0 + d.to_digit(10).unwrap_or(0)).expect("SMuFL code point"))
+        .collect()
 }
 
 /// A five-line staff, positioned by its top line.
@@ -824,18 +845,20 @@ impl Scene {
     }
 
     /// A tablature sign centred on `y`, optionally clearing the line behind it.
+    /// A tablature sign in Bravura's historical forms, centred on `y`,
+    /// optionally clearing the line behind it.
     fn tab_sign(&mut self, x: f32, y: f32, text: &str, knockout: bool) {
         if knockout {
-            let width = 0.55 * TAB_SIZE * text.chars().count() as f32 + 3.0;
+            let width = TAB_GLYPH_WIDTH * text.chars().count() as f32 + 3.0;
             self.bars.push(Bar {
                 x: x - width / 2.0,
-                y: y - 0.45 * TAB_SIZE,
+                y: y - 0.45 * TAB_LINE,
                 width,
-                height: 0.9 * TAB_SIZE,
+                height: 0.9 * TAB_LINE,
                 knockout: true,
             });
         }
-        self.glyph(x, y, text, false, TAB_SIZE);
+        self.glyph(x, y + TAB_GLYPH_DROP, text, true, TAB_MUSIC_SIZE);
     }
 
     fn glyph(&mut self, x: f32, y: f32, text: &str, music: bool, size: f32) {
@@ -1084,7 +1107,11 @@ mod tests {
         let instrument = intavolatura_core::Instrument::theorbo_in_a();
         let struck: Vec<(usize, u8)> = fingering(stops).played().collect();
         draw_fingering(&mut scene, 0.0, &struck, &instrument, style);
-        scene.glyphs.into_iter().map(|g| (g.text, g.y)).collect()
+        scene
+            .glyphs
+            .into_iter()
+            .map(|g| (g.text, g.y - TAB_GLYPH_DROP))
+            .collect()
     }
 
     #[test]
@@ -1093,9 +1120,9 @@ mod tests {
         assert_eq!(
             signs,
             [
-                ("0".to_string(), TAB_TOP + 5.0 * TAB_LINE),
-                ("2".to_string(), TAB_TOP + 3.0 * TAB_LINE),
-                ("3".to_string(), TAB_TOP),
+                (italian_number(0), TAB_TOP + 5.0 * TAB_LINE),
+                (italian_number(2), TAB_TOP + 3.0 * TAB_LINE),
+                (italian_number(3), TAB_TOP),
             ]
         );
     }
@@ -1106,9 +1133,9 @@ mod tests {
         assert_eq!(
             signs,
             [
-                ("a".to_string(), TAB_TOP),
-                ("c".to_string(), TAB_TOP + 2.0 * TAB_LINE),
-                ("k".to_string(), TAB_TOP + 5.0 * TAB_LINE),
+                (french_letter(0).to_string(), TAB_TOP),
+                (french_letter(2).to_string(), TAB_TOP + 2.0 * TAB_LINE),
+                (french_letter(9).to_string(), TAB_TOP + 5.0 * TAB_LINE),
             ]
         );
     }
@@ -1120,14 +1147,26 @@ mod tests {
             .flat_map(|&c| tab_signs(&[(c, 0)], TablatureStyle::French))
             .map(|(t, _)| t)
             .collect();
-        assert_eq!(french, ["a", "/a", "///a", "4", "7"]);
+        let sign = |c: u32| char::from_u32(c).unwrap().to_string();
+        assert_eq!(
+            french,
+            [
+                sign(0xEBCD),
+                sign(0xEBCE),
+                sign(0xEBD0),
+                italian_number(4),
+                italian_number(7)
+            ]
+        );
+        // k is the tenth letter, as there is no j.
+        assert_eq!(french_letter(9), '\u{EBC9}');
 
         let italian = tab_signs(&[(6, 0), (9, 0)], TablatureStyle::Italian);
         assert_eq!(
             italian,
             [
-                ("0".to_string(), TAB_TOP - TAB_LINE),
-                ("10".to_string(), TAB_TOP - 2.0 * TAB_LINE),
+                (italian_number(0), TAB_TOP - TAB_LINE),
+                (italian_number(10), TAB_TOP - 2.0 * TAB_LINE),
             ]
         );
     }

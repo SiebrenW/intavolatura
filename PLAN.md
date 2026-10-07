@@ -130,6 +130,10 @@ Weights to be tuned against real bass lines.
 - Setting "retune diapasons to the key" (default on): diapasons take the key signature's accidentals, e.g. F#2 and C#2 in D major.
 - Instruments are data (courses, tuning, fret count per course) so others can be added.
 
+## Tablature: signs
+
+All signs use the historical forms in Bravura's SMuFL lute tablature ranges (French letters U+EBC0–EBCC and course signs U+EBCD–EBD0, Italian numerals U+EBE0–EBE9; SIL OFL, already bundled), centred on their lines.
+
 ## Tablature: diapason signs (theorbo, courses 7–14)
 
 - French: 7 = `a`, 8 = `/a`, 9 = `//a`, 10 = `///a`, 11–14 = `4`, `5`, `6`, `7`; below the staff.
