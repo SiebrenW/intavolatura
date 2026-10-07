@@ -4,7 +4,7 @@ use crate::duration::{Duration, Placement, TimeSignature, place};
 use crate::figuring::Figurings;
 use crate::fingering::Fingering;
 use crate::key::Key;
-use crate::pitch::{Accidental, Pitch};
+use crate::pitch::{Accidental, Letter, Pitch};
 
 /// One bass note with its figuring and, optionally, a pinned fingering.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -15,6 +15,9 @@ pub struct BassNote {
     pub figurings: Figurings,
     pub duration: Duration,
     pub pin: Option<Fingering>,
+    /// A rest: only the duration counts. The pitch is kept so that turning
+    /// it back into a note starts somewhere sensible.
+    pub rest: bool,
 }
 
 impl BassNote {
@@ -25,6 +28,16 @@ impl BassNote {
             figurings: Figurings::default(),
             duration: Duration::QUARTER,
             pin: None,
+            rest: false,
+        }
+    }
+
+    /// A rest of this duration.
+    pub fn rest(duration: Duration) -> BassNote {
+        BassNote {
+            duration,
+            rest: true,
+            ..BassNote::new(Pitch::new(Letter::D, Accidental::NATURAL, 3))
         }
     }
 }
@@ -153,20 +166,44 @@ impl Editor {
         self.perform(Edit::Remove(index))
     }
 
-    /// Moves the bass note to `pitch`, dropping its pin.
+    /// Moves the bass note to `pitch`, dropping its pin. A rest becomes a
+    /// note at that pitch.
     pub fn set_pitch(&mut self, index: usize, pitch: Pitch) -> bool {
-        self.change_chord(index, |note| note.pitch = pitch)
+        self.change_chord(index, |note| {
+            note.pitch = pitch;
+            note.rest = false;
+        })
     }
 
     /// Moves the bass note by staff steps, taking the key's accidentals.
+    /// Rests do not move.
     pub fn step_pitch(&mut self, index: usize, steps: i16) -> bool {
-        let pitch = self.line.key.step(self.line.notes[index].pitch, steps);
+        let note = &self.line.notes[index];
+        if note.rest {
+            return false;
+        }
+        let pitch = self.line.key.step(note.pitch, steps);
         self.set_pitch(index, pitch)
+    }
+
+    /// Turns a note into a rest of the same length, dropping its figures
+    /// and pin, or a rest back into a note.
+    pub fn toggle_rest(&mut self, index: usize) -> bool {
+        let mut note = self.line.notes[index].clone();
+        note.rest = !note.rest;
+        if note.rest {
+            note.figurings = Figurings::default();
+            note.pin = None;
+        }
+        self.replace(index, note)
     }
 
     /// Raises (`up`) or lowers the bass note's accidental by a semitone,
     /// within flat to sharp.
     pub fn step_accidental(&mut self, index: usize, up: bool) -> bool {
+        if self.line.notes[index].rest {
+            return false;
+        }
         let pitch = self.line.notes[index].pitch;
         let current = pitch.name.accidental;
         let next = if up {
@@ -371,6 +408,24 @@ mod tests {
         assert_eq!(editor.line().time(), TimeSignature::COMMON);
         editor.undo();
         assert_eq!(editor.line().notes()[0].duration, Duration::QUARTER);
+    }
+
+    #[test]
+    fn rests_keep_their_length_and_drop_figures() {
+        let mut editor = editor_with(&["D3"]);
+        editor.set_figurings(0, "6".parse().unwrap());
+        editor.set_pin(0, some_pin());
+        assert!(editor.toggle_rest(0));
+        let note = &editor.line().notes()[0];
+        assert!(note.rest && note.figurings.is_empty() && note.pin.is_none());
+        assert!(!editor.step_pitch(0, 1));
+        assert!(!editor.step_accidental(0, true));
+        // Clicking a pitch turns the rest back into a note.
+        assert!(editor.set_pitch(0, "F3".parse().unwrap()));
+        assert!(!editor.line().notes()[0].rest);
+        editor.undo();
+        editor.undo();
+        assert_eq!(editor.line().notes()[0].figurings.to_string(), "6");
     }
 
     #[test]

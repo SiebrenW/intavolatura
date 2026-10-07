@@ -77,7 +77,13 @@ fn load(
             .map_err(|e| format!("{file}: {e}"))?;
         let key = document.line.key();
         let instrument = settings.tune(&document.instrument, key);
-        for (index, note) in document.line.notes().iter().enumerate() {
+        for (index, note) in document
+            .line
+            .notes()
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| !n.rest)
+        {
             // Tuning looks at the first chord; a suspension's resolution is
             // derived from it, not ranked.
             let chord = Chord::new(note.pitch.name, &note.figurings.parts()[0], key);

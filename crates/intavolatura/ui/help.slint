@@ -96,6 +96,13 @@ export component ShortcutsPanel inherits Rectangle {
             }
 
             Row {
+                keys: "R";
+                action: "Turn the note into a rest of the same length, or back";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
                 keys: "Delete / Backspace";
                 action: "Remove the note";
                 ink: root.ink;

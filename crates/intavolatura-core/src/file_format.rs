@@ -16,13 +16,13 @@
 //! its duration (`4` for a quarter, `2.` for a dotted half; a quarter if
 //! left out), optionally its figurings in canonical form, optionally its
 //! pinned fingering as `course:fret` pairs with course 1 first. Unplayed
-//! courses are left out.
+//! courses are left out. A rest is `r` and its duration.
 
 use std::error::Error;
 use std::fmt;
 
 use crate::bass_line::{BassLine, BassNote};
-use crate::duration::TimeSignature;
+use crate::duration::{Duration, TimeSignature};
 use crate::fingering::Fingering;
 use crate::instrument::{Instrument, MAX_COURSES};
 
@@ -45,6 +45,10 @@ pub fn write(document: &Document) -> String {
         document.instrument.id()
     );
     for note in document.line.notes() {
+        if note.rest {
+            out.push_str(&format!("r {}\n", note.duration));
+            continue;
+        }
         out.push_str(&format!("{} {}", note.pitch, note.duration));
         if !note.figurings.is_empty() || note.pin.is_some() {
             out.push_str(" |");
@@ -117,6 +121,17 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
 fn read_note(line: &str, instrument: &Instrument) -> Result<BassNote, &'static str> {
     let mut parts = line.split('|').map(str::trim);
     let mut head = parts.next().unwrap_or_default().split_whitespace();
+    if let Some(rest) = line
+        .trim()
+        .strip_prefix("r ")
+        .or((line.trim() == "r").then_some(""))
+    {
+        let duration = match rest.trim() {
+            "" => Duration::QUARTER,
+            d => d.parse().map_err(|_| "invalid duration")?,
+        };
+        return Ok(BassNote::rest(duration));
+    }
     let pitch = head
         .next()
         .and_then(|p| p.parse().ok())
@@ -191,6 +206,7 @@ C#3 4 | 6
 A2 2. | # | pin 1:0 2:0 3:2 6:0
 G2 4 | | pin 4:0 5:0 7:0
 Bb2 8 | 6+ 4-5 3
+r 2
 ";
 
     #[test]
@@ -199,7 +215,8 @@ Bb2 8 | 6+ 4-5 3
         assert_eq!(doc.line.key().to_string(), "D minor");
         assert_eq!(doc.instrument.id(), "theorbo-a-14");
         let notes = doc.line.notes();
-        assert_eq!(notes.len(), 5);
+        assert_eq!(notes.len(), 6);
+        assert!(notes[5].rest && notes[5].duration.to_string() == "2");
         assert_eq!(notes[1].figurings.to_string(), "6");
         let pin = notes[2].pin.unwrap();
         assert_eq!(

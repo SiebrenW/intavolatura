@@ -185,6 +185,17 @@ impl App {
         };
         let note = &self.line().notes()[index];
         let (_, _, realization) = &self.realizations[index];
+        let value = match note.duration.value {
+            NoteValue::Whole => "whole",
+            NoteValue::Half => "half",
+            NoteValue::Quarter => "quarter",
+            NoteValue::Eighth => "eighth",
+            NoteValue::Sixteenth => "sixteenth",
+        };
+        let dotted = if note.duration.dotted { "dotted " } else { "" };
+        if note.rest {
+            return format!("{dotted}{value} rest · click the staff or press R for a note");
+        }
         let figuring = note.figurings.to_string();
         let fingering = match realization.shown {
             None => "no playable fingering".to_string(),
@@ -215,14 +226,6 @@ impl App {
         } else {
             figuring
         };
-        let value = match note.duration.value {
-            NoteValue::Whole => "whole",
-            NoteValue::Half => "half",
-            NoteValue::Quarter => "quarter",
-            NoteValue::Eighth => "eighth",
-            NoteValue::Sixteenth => "sixteenth",
-        };
-        let dotted = if note.duration.dotted { "dotted " } else { "" };
         format!(
             "{} {dotted}{value}  {}  ·  {}",
             note.pitch, figuring, fingering
@@ -272,10 +275,13 @@ impl App {
                 let count = self.line().notes().len();
                 self.selected = (count > 0).then(|| i.min(count - 1));
             }
-            (Input::Enter, Some(_)) => self.editing = true,
+            (Input::Enter, Some(i)) => self.editing = !self.line().notes()[i].rest,
             (Input::Char(c @ ('[' | ']')), Some(i)) => {
                 let pin = self.realizations[i].2.cycle(c == ']');
                 self.edit(|e| e.set_pin(i, pin));
+            }
+            (Input::Char('r'), Some(i)) => {
+                self.edit(|e| e.toggle_rest(i));
             }
             (Input::Char(c @ '3'..='7'), _) => {
                 let value = NoteValue::ALL[(b'7' - c as u8) as usize];
@@ -308,8 +314,9 @@ impl App {
         if y > view::FIGURES_TOP - view::SPACE {
             if let ColumnHit::Column(i) = hit {
                 self.selected = Some(i);
-                self.editing = true;
-                return true;
+                // A rest has no figures to edit.
+                self.editing = !self.line().notes()[i].rest;
+                return self.editing;
             }
             return false;
         }
@@ -486,6 +493,19 @@ mod tests {
         assert!(app.accept_figuring("#"));
         assert!(!app.editing);
         assert_eq!(app.line().notes()[0].figurings.to_string(), "#");
+    }
+
+    #[test]
+    fn r_toggles_a_rest_and_rests_take_no_figures() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(19));
+        assert!(app.key(Input::Char('r'), false, false));
+        assert!(app.line().notes()[0].rest);
+        assert!(app.describe_selection().contains("rest"));
+        app.key(Input::Enter, false, false);
+        assert!(!app.editing);
+        app.key(Input::Char('r'), false, false);
+        assert!(!app.line().notes()[0].rest);
     }
 
     #[test]

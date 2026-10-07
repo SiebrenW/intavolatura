@@ -17,6 +17,10 @@ The single major or minor key of a bass line, shown as its key signature; figure
 How long a bass note sounds, as a note value (whole, half, quarter, eighth, sixteenth), optionally dotted.
 _Avoid_: Length, rhythm (for a single note)
 
+**Rest**:
+An entry in the bass line with only a duration: silence, with no figures and no chord.
+_Avoid_: Pause, empty note
+
 **Time signature**:
 The single meter of a bass line, such as 4/4, 3/4, 3/2 or 6/8; it decides where bar lines fall.
 _Avoid_: Meter (in code and docs), measure signature
@@ -41,7 +45,7 @@ A faded, bracketed accidental such as (♯) under a bass note in a minor key, wh
 _Avoid_: Warning, auto-sharp
 
 **Bass line**:
-An ordered sequence of bass notes, each carrying its own figuring; the unit the user edits.
+An ordered sequence of bass notes and rests, each bass note carrying its own figuring; the unit the user edits.
 
 **Chord**:
 The set of note names, without octaves, implied by a bass note and its figuring in the key.

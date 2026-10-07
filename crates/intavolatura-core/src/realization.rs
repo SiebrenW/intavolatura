@@ -98,6 +98,13 @@ pub fn realize(
     instrument: &Instrument,
     settings: &Settings,
 ) -> Realization {
+    if note.rest {
+        return Realization {
+            parts: Vec::new(),
+            candidates: Vec::new(),
+            shown: None,
+        };
+    }
     let chords: Vec<Chord> = note
         .figurings
         .parts()

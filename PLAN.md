@@ -58,6 +58,7 @@ Each step is buildable and tested before the next starts.
   - [x] One time signature per bass line (4/4 as C, 2/2 as ¢, 3/4, 3/2, 2/4, 6/4, 6/8, 3/8, 12/8), chosen in a picker; bar lines are placed automatically
   - [x] A note running over a bar line is drawn in the warning colour (ties across bar lines are not supported yet)
   - [x] A suspension's figurings split the note equally
+  - [x] Rests: `R` turns the selected note into a rest of the same length (or back); a click on the staff makes it a note again. Shown on every staff, with a rhythm sign over an empty tablature column
   - [x] Note values with stems, flags and dots on both staves; lute rhythm signs above the tablature; columns widen with duration (a whole note twice a quarter)
 - [ ] Files
   - [x] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. Open/Save buttons and Ctrl/Cmd+O, Ctrl/Cmd+S, Ctrl/Cmd+Shift+S with native dialogs; a path on the command line opens that file
@@ -68,7 +69,7 @@ Each step is buildable and tested before the next starts.
 ## Later
 
 - Rarer figures (9, 9/7, 5/4, ♯4/2, …) and continuation lines.
-- Rests, upbeats, ties across bar lines, time signature changes, uneven suspension splits.
+- Upbeats, ties across bar lines, time signature changes, uneven suspension splits.
 - Voice leading between chords.
 - More instruments: baroque guitar, renaissance lute in G.
 

@@ -299,8 +299,30 @@ pub fn scene(
         let part_duration = note.duration.split(parts).unwrap_or(note.duration);
         let placement = placements[index];
 
-        // The bass sounds once, for the whole note, under the first figuring.
         let x = columns.part_x(index, 0, parts);
+        if note.rest {
+            // Silence in every row: rests on the staves, and in the
+            // tablature a rhythm sign over an empty column, as in the sources.
+            for staff in [&staff, &treble, &bass] {
+                staff.draw_rest(&mut scene, x, note.duration);
+            }
+            draw_rhythm_sign(&mut scene, x, note.duration, options.tablature);
+            if placement.crosses_bar {
+                let last = scene.glyphs.len();
+                for glyph in &mut scene.glyphs[last.saturating_sub(4)..] {
+                    glyph.warning = true;
+                }
+            }
+            if placement.ends_bar {
+                let x = columns.left(index + 1) - 2.0;
+                scene.vertical(x, staff.top, staff.top + 4.0 * SPACE, BAR_LINE);
+                scene.vertical(x, system.0, system.1, BAR_LINE);
+                scene.vertical(x, TAB_TOP, TAB_BOTTOM, BAR_LINE);
+            }
+            continue;
+        }
+
+        // The bass sounds once, for the whole note, under the first figuring.
         let first_glyph = scene.glyphs.len();
         staff.draw_note(&mut scene, x, note.pitch, key, note.duration, 0.0, Some(0));
         staff.draw_stem(
@@ -663,6 +685,28 @@ impl Staff {
         };
         // Flags hang from the stem end, extending to its right.
         scene.glyph(stem_x + 0.55 * SPACE, to, flag, true, MUSIC_SIZE);
+    }
+
+    /// Draws a rest: the whole rest hangs from the fourth line, the half
+    /// rest sits on the middle line, shorter rests centre on it.
+    fn draw_rest(&self, scene: &mut Scene, x: f32, duration: Duration) {
+        let (glyph, y) = match duration.value {
+            NoteValue::Whole => ("\u{E4E3}", self.top + SPACE),
+            NoteValue::Half => ("\u{E4E4}", self.top + 2.0 * SPACE),
+            NoteValue::Quarter => ("\u{E4E5}", self.top + 2.0 * SPACE),
+            NoteValue::Eighth => ("\u{E4E6}", self.top + 2.0 * SPACE),
+            NoteValue::Sixteenth => ("\u{E4E7}", self.top + 2.0 * SPACE),
+        };
+        scene.glyph(x, y, glyph, true, MUSIC_SIZE);
+        if duration.dotted {
+            scene.glyph(
+                x + 1.3 * SPACE,
+                self.top + 1.5 * SPACE,
+                "\u{E1E7}",
+                true,
+                MUSIC_SIZE,
+            );
+        }
     }
 
     /// Draws the time signature: C for 4/4, ¢ for 2/2, else stacked digits.
