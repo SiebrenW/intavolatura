@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Figurings, Key, Mode};
+use intavolatura_core::{Duration, Figurings, Key, Mode, NoteValue, TimeSignature};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -41,6 +41,15 @@ pub fn wire(window: &AppWindow, app: App) {
     let key_names: Vec<SharedString> = keys.iter().map(|&k| key_name(k).into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
+    let times: Vec<SharedString> = TimeSignature::ALL
+        .iter()
+        .map(|t| match (t.beats, t.beat_value) {
+            (4, 4) => "4/4 (C)".into(),
+            (2, 2) => "2/2 (¢)".into(),
+            _ => t.to_string().into(),
+        })
+        .collect();
+    window.set_time_signatures(ModelRc::new(VecModel::from(times)));
     window.set_command_key(
         if cfg!(target_os = "macos") {
             "⌘"
@@ -105,6 +114,36 @@ pub fn wire(window: &AppWindow, app: App) {
             if let Some(key) = key {
                 app.set_key(key);
             }
+        })
+    });
+
+    let s = shared.clone();
+    window.on_time_selected(move |index| {
+        s.update(|_, app| {
+            if let Some(&time) = TimeSignature::ALL.get(index as usize) {
+                app.set_time(time);
+            }
+        })
+    });
+
+    let s = shared.clone();
+    window.on_duration_selected(move |index| {
+        s.update(|_, app| {
+            if let Some(&value) = NoteValue::ALL.get(index as usize) {
+                let dotted = app.current_duration().dotted;
+                app.set_duration(Duration { value, dotted });
+            }
+        })
+    });
+
+    let s = shared.clone();
+    window.on_dot_toggled(move || {
+        s.update(|_, app| {
+            let current = app.current_duration();
+            app.set_duration(Duration {
+                dotted: !current.dotted,
+                ..current
+            });
         })
     });
 
@@ -329,6 +368,7 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
             music: g.music,
             size: g.size,
             faded: g.faded,
+            warning: g.warning,
         })
         .collect();
     let bars: Vec<Bar> = scene
@@ -371,6 +411,21 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_retune_diapasons(preferences.retune_diapasons);
     window.set_fret_span(preferences.fret_span.into());
     window.set_candidates_to_cycle(preferences.candidates_to_cycle as i32);
+
+    let time = app.line().time();
+    window.set_time_index(
+        TimeSignature::ALL
+            .iter()
+            .position(|&t| t == time)
+            .unwrap_or(0) as i32,
+    );
+    let duration = app.current_duration();
+    let value = NoteValue::ALL
+        .iter()
+        .position(|&v| v == duration.value)
+        .unwrap_or(2);
+    window.set_duration_value(value as i32);
+    window.set_duration_dotted(duration.dotted);
 
     let key = app.line().key();
     window.set_key_index(keys.iter().position(|&k| k == key).unwrap_or(0) as i32);

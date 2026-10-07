@@ -53,6 +53,12 @@ Each step is buildable and tested before the next starts.
   - [x] Every shortcut and the figuring syntax listed in a Keys overview (button, `?` or F1)
   - [x] Tablature in Italian or French style (setting)
   - [x] Long bass lines scroll horizontally; no system breaks
+- [x] Rhythm
+  - [x] Each bass note has a duration (whole to sixteenth, optionally dotted); keys 7 6 5 4 3 and `.`, or the duration bar; new notes take the last duration chosen
+  - [x] One time signature per bass line (4/4 as C, 2/2 as ¢, 3/4, 3/2, 2/4, 6/4, 6/8, 3/8, 12/8), chosen in a picker; bar lines are placed automatically
+  - [x] A note running over a bar line is drawn in the warning colour (ties across bar lines are not supported yet)
+  - [x] A suspension's figurings split the note equally
+  - [x] Note values with stems, flags and dots on both staves; lute rhythm signs above the tablature; columns widen with duration (a whole note twice a quarter)
 - [ ] Files
   - [x] Save/load in the app's own text format (key, instrument, bass notes, figurings, pins); format described in `crates/intavolatura-core/src/file_format.rs`. Open/Save buttons and Ctrl/Cmd+O, Ctrl/Cmd+S, Ctrl/Cmd+Shift+S with native dialogs; a path on the command line opens that file
   - [x] The window title marks unsaved changes; opening another file or closing asks before discarding them
@@ -62,7 +68,8 @@ Each step is buildable and tested before the next starts.
 ## Later
 
 - Rarer figures (9, 9/7, 5/4, ♯4/2, …) and continuation lines.
-- Rhythm, bar lines, voice leading between chords.
+- Rests, upbeats, ties across bar lines, time signature changes, uneven suspension splits.
+- Voice leading between chords.
 - More instruments: baroque guitar, renaissance lute in G.
 
 ## Figuring input syntax

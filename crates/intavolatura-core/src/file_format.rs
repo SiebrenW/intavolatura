@@ -3,22 +3,26 @@
 //! ```text
 //! intavolatura 1
 //! key: D minor
+//! time: 3/2
 //! instrument: theorbo-a-14
 //!
-//! D3
-//! C#3 | 6
-//! A2 | # | pin 1:0 2:0 3:2 6:0
+//! D3 2
+//! C#3 4 | 6
+//! A2 2. | # | pin 1:0 2:0 3:2 6:0
 //! ```
 //!
-//! After the version line come `name: value` headers, a blank line, then
-//! one bass note per line: the written pitch, optionally its figuring in
-//! canonical form, optionally its pinned fingering as `course:fret` pairs
-//! with course 1 first. Unplayed courses are left out.
+//! After the version line come `name: value` headers (`time` defaults to
+//! 4/4), a blank line, then one bass note per line: the written pitch and
+//! its duration (`4` for a quarter, `2.` for a dotted half; a quarter if
+//! left out), optionally its figurings in canonical form, optionally its
+//! pinned fingering as `course:fret` pairs with course 1 first. Unplayed
+//! courses are left out.
 
 use std::error::Error;
 use std::fmt;
 
 use crate::bass_line::{BassLine, BassNote};
+use crate::duration::TimeSignature;
 use crate::fingering::Fingering;
 use crate::instrument::{Instrument, MAX_COURSES};
 
@@ -35,12 +39,13 @@ pub struct Document {
 /// Writes a document in the file format.
 pub fn write(document: &Document) -> String {
     let mut out = format!(
-        "{VERSION_LINE}\nkey: {}\ninstrument: {}\n\n",
+        "{VERSION_LINE}\nkey: {}\ntime: {}\ninstrument: {}\n\n",
         document.line.key(),
+        document.line.time(),
         document.instrument.id()
     );
     for note in document.line.notes() {
-        out.push_str(&note.pitch.to_string());
+        out.push_str(&format!("{} {}", note.pitch, note.duration));
         if !note.figurings.is_empty() || note.pin.is_some() {
             out.push_str(" |");
             if !note.figurings.is_empty() {
@@ -73,7 +78,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
         None => return Err(error(1, "empty file")),
     }
 
-    let (mut key, mut instrument) = (None, None);
+    let (mut key, mut instrument, mut time) = (None, None, TimeSignature::COMMON);
     for (n, l) in lines.by_ref() {
         if l.is_empty() {
             break;
@@ -84,6 +89,11 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
         let value = value.trim();
         match name.trim() {
             "key" => key = Some(value.parse().map_err(|_| error(n, "invalid key"))?),
+            "time" => {
+                time = value
+                    .parse()
+                    .map_err(|_| error(n, "invalid time signature"))?
+            }
             "instrument" => {
                 instrument =
                     Some(Instrument::by_id(value).ok_or_else(|| error(n, "unknown instrument"))?);
@@ -99,18 +109,25 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
         notes.push(read_note(l, &instrument).map_err(|m| error(n, m))?);
     }
     Ok(Document {
-        line: BassLine::with_notes(key, notes),
+        line: BassLine::with_notes(key, time, notes),
         instrument,
     })
 }
 
 fn read_note(line: &str, instrument: &Instrument) -> Result<BassNote, &'static str> {
     let mut parts = line.split('|').map(str::trim);
-    let pitch = parts
+    let mut head = parts.next().unwrap_or_default().split_whitespace();
+    let pitch = head
         .next()
         .and_then(|p| p.parse().ok())
         .ok_or("invalid pitch")?;
     let mut note = BassNote::new(pitch);
+    if let Some(duration) = head.next() {
+        note.duration = duration.parse().map_err(|_| "invalid duration")?;
+    }
+    if head.next().is_some() {
+        return Err("expected a pitch and a duration");
+    }
     if let Some(figuring) = parts.next() {
         note.figurings = figuring.parse().map_err(|_| "invalid figuring")?;
     }
@@ -166,13 +183,14 @@ mod tests {
     const SAMPLE: &str = "\
 intavolatura 1
 key: D minor
+time: 3/2
 instrument: theorbo-a-14
 
-D3
-C#3 | 6
-A2 | # | pin 1:0 2:0 3:2 6:0
-G2 | | pin 4:0 5:0 7:0
-Bb2 | 6+ 4
+D3 2
+C#3 4 | 6
+A2 2. | # | pin 1:0 2:0 3:2 6:0
+G2 4 | | pin 4:0 5:0 7:0
+Bb2 8 | 6+ 4-5 3
 ";
 
     #[test]
@@ -189,7 +207,9 @@ Bb2 | 6+ 4
             [(0, 0), (1, 0), (2, 2), (5, 0)]
         );
         assert!(notes[3].figurings.is_empty() && notes[3].pin.is_some());
-        assert_eq!(notes[4].figurings.to_string(), "6+ 4");
+        assert_eq!(notes[4].figurings.to_string(), "6+ 4-5 3");
+        assert_eq!(doc.line.time().to_string(), "3/2");
+        assert_eq!(notes[2].duration.to_string(), "2.");
     }
 
     #[test]
@@ -198,6 +218,19 @@ Bb2 | 6+ 4
         let written = write(&doc);
         assert_eq!(written, SAMPLE);
         assert_eq!(read(&written).unwrap(), doc);
+    }
+
+    #[test]
+    fn older_files_without_durations_read_as_quarters_in_four_four() {
+        let doc =
+            read("intavolatura 1\nkey: C major\ninstrument: theorbo-a-14\n\nC3\nD3 | 6\n").unwrap();
+        assert_eq!(doc.line.time(), TimeSignature::COMMON);
+        assert!(
+            doc.line
+                .notes()
+                .iter()
+                .all(|n| n.duration.to_string() == "4")
+        );
     }
 
     #[test]
@@ -230,6 +263,17 @@ Bb2 | 6+ 4
             ),
             (format!("{header}C3\nX9\n"), 6, "invalid pitch"),
             (format!("{header}C3 | 1\n"), 5, "invalid figuring"),
+            (format!("{header}C3 3\n"), 5, "invalid duration"),
+            (
+                format!("{header}C3 4 4\n"),
+                5,
+                "expected a pitch and a duration",
+            ),
+            (
+                "intavolatura 1\ntime: 3/3\n".to_string(),
+                2,
+                "invalid time signature",
+            ),
             (format!("{header}C3 | | pin 15:0\n"), 5, "no such course"),
             (
                 format!("{header}C3 | | pin 7:2\n"),

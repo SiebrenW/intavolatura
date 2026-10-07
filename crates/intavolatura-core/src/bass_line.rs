@@ -1,5 +1,6 @@
 //! The bass line being edited, its editing commands and undo/redo.
 
+use crate::duration::{Duration, Placement, TimeSignature, place};
 use crate::figuring::Figurings;
 use crate::fingering::Fingering;
 use crate::key::Key;
@@ -12,45 +13,55 @@ pub struct BassNote {
     pub pitch: Pitch,
     /// One figuring, or several in sequence for a suspension.
     pub figurings: Figurings,
+    pub duration: Duration,
     pub pin: Option<Fingering>,
 }
 
 impl BassNote {
-    /// A bass note with an empty figuring and no pin.
+    /// A quarter note with an empty figuring and no pin.
     pub fn new(pitch: Pitch) -> BassNote {
         BassNote {
             pitch,
             figurings: Figurings::default(),
+            duration: Duration::QUARTER,
             pin: None,
         }
     }
 }
 
-/// An ordered sequence of bass notes in a single key.
+/// An ordered sequence of bass notes in a single key and time signature.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BassLine {
     key: Key,
+    time: TimeSignature,
     notes: Vec<BassNote>,
 }
 
 impl BassLine {
+    /// An empty bass line in 4/4.
     pub fn new(key: Key) -> BassLine {
-        BassLine {
-            key,
-            notes: Vec::new(),
-        }
+        BassLine::with_notes(key, TimeSignature::COMMON, Vec::new())
     }
 
-    pub fn with_notes(key: Key, notes: Vec<BassNote>) -> BassLine {
-        BassLine { key, notes }
+    pub fn with_notes(key: Key, time: TimeSignature, notes: Vec<BassNote>) -> BassLine {
+        BassLine { key, time, notes }
     }
 
     pub fn key(&self) -> Key {
         self.key
     }
 
+    pub fn time(&self) -> TimeSignature {
+        self.time
+    }
+
     pub fn notes(&self) -> &[BassNote] {
         &self.notes
+    }
+
+    /// Where each note falls against the bar lines.
+    pub fn placements(&self) -> Vec<Placement> {
+        place(self.notes.iter().map(|n| n.duration), self.time)
     }
 }
 
@@ -62,6 +73,7 @@ enum Edit {
     Replace(usize, BassNote),
     /// A new key with the pin of every note, in order.
     SetKey(Key, Vec<Option<Fingering>>),
+    SetTime(TimeSignature),
 }
 
 impl Edit {
@@ -84,6 +96,7 @@ impl Edit {
                     .collect();
                 Edit::SetKey(std::mem::replace(&mut line.key, key), old_pins)
             }
+            Edit::SetTime(time) => Edit::SetTime(std::mem::replace(&mut line.time, time)),
         }
     }
 }
@@ -113,8 +126,27 @@ impl Editor {
     }
 
     /// Inserts a new bass note at `index`; `index == len` appends.
-    pub fn insert(&mut self, index: usize, pitch: Pitch) -> bool {
-        self.perform(Edit::Insert(index, BassNote::new(pitch)))
+    pub fn insert(&mut self, index: usize, pitch: Pitch, duration: Duration) -> bool {
+        let note = BassNote {
+            duration,
+            ..BassNote::new(pitch)
+        };
+        self.perform(Edit::Insert(index, note))
+    }
+
+    /// Sets the duration; the chord, and so the pin, stay.
+    pub fn set_duration(&mut self, index: usize, duration: Duration) -> bool {
+        let mut note = self.line.notes[index].clone();
+        note.duration = duration;
+        self.replace(index, note)
+    }
+
+    /// Changes the time signature; only the bar lines move.
+    pub fn set_time(&mut self, time: TimeSignature) -> bool {
+        if time == self.line.time {
+            return false;
+        }
+        self.perform(Edit::SetTime(time))
     }
 
     pub fn remove(&mut self, index: usize) -> bool {
@@ -226,7 +258,7 @@ mod tests {
     fn editor_with(pitches: &[&str]) -> Editor {
         let mut editor = Editor::new(BassLine::new(key("D", Mode::Major)));
         for (i, p) in pitches.iter().enumerate() {
-            editor.insert(i, p.parse().unwrap());
+            editor.insert(i, p.parse().unwrap(), Duration::QUARTER);
         }
         editor
     }
@@ -249,8 +281,8 @@ mod tests {
     #[test]
     fn insert_appends_and_inserts_between() {
         let mut editor = editor_with(&["D3", "A2"]);
-        editor.insert(1, "F#2".parse().unwrap());
-        editor.insert(3, "D2".parse().unwrap());
+        editor.insert(1, "F#2".parse().unwrap(), Duration::QUARTER);
+        editor.insert(3, "D2".parse().unwrap(), Duration::QUARTER);
         assert_eq!(pitches(&editor), ["D3", "F#2", "A2", "D2"]);
     }
 
@@ -323,10 +355,29 @@ mod tests {
     }
 
     #[test]
+    fn durations_and_time_signatures_are_undoable_and_keep_pins() {
+        let mut editor = editor_with(&["D3", "A2"]);
+        editor.set_pin(0, some_pin());
+        let half: Duration = "2".parse().unwrap();
+        assert!(editor.set_duration(0, half));
+        assert_eq!(editor.line().notes()[0].duration, half);
+        assert_eq!(editor.line().notes()[0].pin, some_pin());
+        assert!(!editor.set_duration(0, half));
+
+        assert!(editor.set_time("3/2".parse().unwrap()));
+        assert_eq!(editor.line().time().to_string(), "3/2");
+        assert!(!editor.set_time("3/2".parse().unwrap()));
+        editor.undo();
+        assert_eq!(editor.line().time(), TimeSignature::COMMON);
+        editor.undo();
+        assert_eq!(editor.line().notes()[0].duration, Duration::QUARTER);
+    }
+
+    #[test]
     fn a_new_edit_clears_redo() {
         let mut editor = editor_with(&["D3"]);
         editor.undo();
-        editor.insert(0, "E3".parse().unwrap());
+        editor.insert(0, "E3".parse().unwrap(), Duration::QUARTER);
         assert!(!editor.redo());
         assert_eq!(pitches(&editor), ["E3"]);
     }

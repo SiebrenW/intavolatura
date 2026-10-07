@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     ui::wire(&ui, app);
 
-    let (width, height) = ((1100.0 * scale) as u32, (720.0 * scale) as u32);
+    let (width, height) = ((1100.0 * scale) as u32, (800.0 * scale) as u32);
     window.dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged {
         scale_factor: scale,
     });

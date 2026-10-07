@@ -1,0 +1,92 @@
+// Buttons for note values and the dot, showing the current duration and
+// the key that sets each.
+
+component ValueButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> key;
+    in property <bool> active;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> highlight;
+    in property <color> panel-border;
+    callback clicked();
+
+    width: 30px;
+    height: 32px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.panel-border;
+    background: root.active ? root.highlight : area.has-hover ? root.highlight.with-alpha(0.5) : transparent;
+
+    Text {
+        y: 0;
+        height: 24px;
+        width: parent.width;
+        text: root.glyph;
+        font-family: "Bravura";
+        font-size: 20px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: root.ink;
+    }
+
+    Text {
+        y: parent.height - 11px;
+        height: 10px;
+        width: parent.width;
+        text: root.key;
+        font-size: 8px;
+        horizontal-alignment: center;
+        color: root.muted;
+    }
+
+    area := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component DurationBar inherits HorizontalLayout {
+    // Index into whole, half, quarter, eighth, sixteenth.
+    in property <int> value;
+    in property <bool> dotted;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> highlight;
+    in property <color> panel-border;
+    callback value-selected(int);
+    callback dot-toggled();
+
+    spacing: 2px;
+    alignment: start;
+
+    property <[string]> glyphs: ["\u{E1D2}", "\u{E1D3}", "\u{E1D5}", "\u{E1D7}", "\u{E1D9}"];
+    property <[string]> keys: ["7", "6", "5", "4", "3"];
+
+    for glyph[i] in root.glyphs: ValueButton {
+        glyph: glyph;
+        key: root.keys[i];
+        active: i == root.value;
+        ink: root.ink;
+        muted: root.muted;
+        highlight: root.highlight;
+        panel-border: root.panel-border;
+        clicked => {
+            root.value-selected(i);
+        }
+    }
+
+    ValueButton {
+        glyph: "\u{E1E7}";
+        key: ".";
+        active: root.dotted;
+        ink: root.ink;
+        muted: root.muted;
+        highlight: root.highlight;
+        panel-border: root.panel-border;
+        clicked => {
+            root.dot-toggled();
+        }
+    }
+}

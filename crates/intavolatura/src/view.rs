@@ -5,7 +5,8 @@
 //! on the baseline, so a glyph centred on `y` sits on that staff position.
 
 use intavolatura_core::{
-    Accidental, BassLine, Figure, FigureAccidental, Instrument, Key, Pitch, Realization,
+    Accidental, BassLine, Duration, Figure, FigureAccidental, Instrument, Key, NoteValue, Pitch,
+    Realization, TimeSignature,
 };
 
 /// One staff space.
@@ -14,11 +15,20 @@ const HALF: f32 = SPACE / 2.0;
 /// Bravura's em is four staff spaces.
 const MUSIC_SIZE: f32 = 4.0 * SPACE;
 const FIGURE_SIZE: f32 = 3.8 * SPACE;
+const RHYTHM_SIZE: f32 = 3.0 * SPACE;
 const LINE: f32 = 1.0;
 
 pub const COLUMN_WIDTH: f32 = 64.0;
 const KEY_SIGNATURE_X: f32 = 52.0;
 const KEY_SIGNATURE_STEP: f32 = 11.5;
+/// Room for the time signature after the key signature.
+const TIME_SIGNATURE_WIDTH: f32 = 30.0;
+/// Columns grow with the duration, but less than in proportion: a whole
+/// note is twice as wide as a quarter, not four times.
+const MIN_PART_WIDTH: f32 = 0.85 * COLUMN_WIDTH;
+const STEM: f32 = 3.5 * SPACE;
+const STEM_WIDTH: f32 = 1.2;
+const BAR_LINE: f32 = 1.4;
 
 /// Staff position (see `Pitch::staff_position`) of each staff's top line.
 const BASS_TOP_POSITION: i16 = 26; // A3
@@ -41,7 +51,8 @@ const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
 /// Vertical layout of the tablature: six lines for the fretted courses,
 /// diapason signs below.
 /// Room above the tablature for Italian diapason signs (two ledger levels).
-const TAB_TOP: f32 = VOICING_BASS_TOP + 8.0 * SPACE + 3.0 * TAB_LINE;
+/// and rhythm signs above those.
+const TAB_TOP: f32 = VOICING_BASS_TOP + 9.0 * SPACE + 6.0 * TAB_LINE;
 const TAB_LINE: f32 = 16.0;
 const TAB_SIZE: f32 = 15.0;
 const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
@@ -57,6 +68,8 @@ pub struct Glyph {
     pub music: bool,
     pub size: f32,
     pub faded: bool,
+    /// Drawn in the warning colour, e.g. a note running over a bar line.
+    pub warning: bool,
 }
 
 /// A filled rectangle: staff lines, ledger lines, tablature lines.
@@ -121,15 +134,23 @@ pub struct Columns {
 }
 
 impl Columns {
-    /// Columns for bass notes with `parts[i]` figurings each.
-    pub fn new(key: Key, parts: &[usize]) -> Columns {
-        let accidentals = key.signature().unsigned_abs() as f32;
-        let mut edges = vec![KEY_SIGNATURE_X + accidentals * KEY_SIGNATURE_STEP + 16.0];
-        for &n in parts {
+    /// Columns for bass notes of these durations with these numbers of
+    /// figurings.
+    pub fn new(key: Key, notes: &[(Duration, usize)]) -> Columns {
+        let mut edges = vec![time_signature_x(key) + TIME_SIGNATURE_WIDTH];
+        for &(duration, parts) in notes {
             let last = *edges.last().expect("never empty");
-            edges.push(last + n.max(1) as f32 * COLUMN_WIDTH);
+            let by_duration = COLUMN_WIDTH * (duration.ticks() as f32 / 8.0).sqrt();
+            let width = by_duration.max(parts.max(1) as f32 * MIN_PART_WIDTH);
+            edges.push(last + width);
         }
         Columns { edges }
+    }
+
+    /// Number of parts in a column, judged from its width is not possible,
+    /// so callers pass it to [`Columns::part_x`].
+    fn part_width(&self, index: usize, parts: usize) -> f32 {
+        self.width_of(index) / parts.max(1) as f32
     }
 
     pub fn count(&self) -> usize {
@@ -154,9 +175,11 @@ impl Columns {
         self.left(index) + self.width_of(index) / 2.0
     }
 
-    /// Centre of part `part` within a column.
-    pub fn part_x(&self, index: usize, part: usize) -> f32 {
-        self.left(index) + (part as f32 + 0.5) * COLUMN_WIDTH
+    /// Centre of part `part` of `parts` within a column; the notehead sits
+    /// a little left of centre to leave room for stems, dots and flags.
+    pub fn part_x(&self, index: usize, part: usize, parts: usize) -> f32 {
+        let width = self.part_width(index, parts);
+        self.left(index) + part as f32 * width + width.min(COLUMN_WIDTH) * 0.45
     }
 
     /// Content width, leaving one empty column to click into for appending.
@@ -191,6 +214,11 @@ pub enum ColumnHit {
     Insert(usize),
 }
 
+/// Where the time signature starts, after the key signature.
+fn time_signature_x(key: Key) -> f32 {
+    KEY_SIGNATURE_X + key.signature().unsigned_abs() as f32 * KEY_SIGNATURE_STEP + 8.0
+}
+
 /// The staff position under a click at `y` on the bass staff.
 pub fn bass_staff_position(y: f32) -> i16 {
     BASS_TOP_POSITION - ((y - BASS_STAFF_TOP) / HALF).round() as i16
@@ -220,48 +248,18 @@ pub fn scene(
     options: &ViewOptions,
 ) -> Scene {
     let key = line.key();
-    let parts: Vec<usize> = line
-        .notes()
-        .iter()
-        .map(|n| n.figurings.parts().len())
-        .collect();
-    let columns = Columns::new(key, &parts);
+    let columns = columns_for(line);
     let mut scene = Scene {
         width: columns.width(),
         height: CONTENT_BOTTOM,
         ..Scene::default()
     };
+    let width = scene.width;
 
     let staff = Staff {
         top: BASS_STAFF_TOP,
         top_position: BASS_TOP_POSITION,
     };
-    let width = scene.width;
-    staff.draw_lines(&mut scene, width);
-    scene.glyph(26.0, staff.y(24), "\u{E062}", true, MUSIC_SIZE); // F clef on F3
-    staff.draw_key_signature(&mut scene, key, BASS_TOP_POSITION);
-
-    for (index, note) in line.notes().iter().enumerate() {
-        // The bass sounds once, under the first figuring.
-        staff.draw_note(
-            &mut scene,
-            columns.part_x(index, 0),
-            note.pitch,
-            key,
-            0.0,
-            Some(0),
-        );
-        for (part, figuring) in note.figurings.parts().iter().enumerate() {
-            let hint = realizations
-                .get(index)
-                .and_then(|r| r.parts.get(part))
-                .and_then(|p| p.chord.leading_tone_hint())
-                .filter(|_| options.show_hints);
-            let x = columns.part_x(index, part);
-            draw_figuring(&mut scene, x, figuring.figures(), hint.is_some());
-        }
-    }
-
     let treble = Staff {
         top: TREBLE_STAFF_TOP,
         top_position: TREBLE_TOP_POSITION,
@@ -270,19 +268,22 @@ pub fn scene(
         top: VOICING_BASS_TOP,
         top_position: BASS_TOP_POSITION,
     };
+
+    // Staves, clefs, key and time signatures.
+    staff.draw_lines(&mut scene, width);
+    scene.glyph(26.0, staff.y(24), "\u{E062}", true, MUSIC_SIZE); // F clef on F3
+    staff.draw_key_signature(&mut scene, key, BASS_TOP_POSITION);
+    staff.draw_time_signature(&mut scene, time_signature_x(key), line.time());
     treble.draw_lines(&mut scene, width);
     bass.draw_lines(&mut scene, width);
-    scene.bar(
-        0.0,
-        TREBLE_STAFF_TOP,
-        1.5,
-        VOICING_BASS_TOP + 4.0 * SPACE - TREBLE_STAFF_TOP,
-    );
+    let system = (TREBLE_STAFF_TOP, VOICING_BASS_TOP + 4.0 * SPACE);
+    scene.vertical(0.75, system.0, system.1, 1.5);
     scene.glyph(26.0, treble.y(32), "\u{E050}", true, MUSIC_SIZE); // G clef on G4
     scene.glyph(26.0, bass.y(24), "\u{E062}", true, MUSIC_SIZE);
     treble.draw_key_signature(&mut scene, key, TREBLE_TOP_POSITION);
     bass.draw_key_signature(&mut scene, key, BASS_TOP_POSITION);
-
+    treble.draw_time_signature(&mut scene, time_signature_x(key), line.time());
+    bass.draw_time_signature(&mut scene, time_signature_x(key), line.time());
     for line in 0..6 {
         scene.bar(
             0.0,
@@ -292,7 +293,48 @@ pub fn scene(
         );
     }
 
-    for (index, realization) in realizations.iter().enumerate() {
+    let placements = line.placements();
+    for (index, note) in line.notes().iter().enumerate() {
+        let parts = note.figurings.parts().len();
+        let part_duration = note.duration.split(parts).unwrap_or(note.duration);
+        let placement = placements[index];
+
+        // The bass sounds once, for the whole note, under the first figuring.
+        let x = columns.part_x(index, 0, parts);
+        let first_glyph = scene.glyphs.len();
+        staff.draw_note(&mut scene, x, note.pitch, key, note.duration, 0.0, Some(0));
+        staff.draw_stem(
+            &mut scene,
+            x,
+            &[note.pitch.staff_position()],
+            note.duration.value,
+        );
+        if placement.crosses_bar {
+            for glyph in &mut scene.glyphs[first_glyph..] {
+                glyph.warning = true;
+            }
+        }
+
+        for (part, figuring) in note.figurings.parts().iter().enumerate() {
+            let hint = realizations
+                .get(index)
+                .and_then(|r| r.parts.get(part))
+                .and_then(|p| p.chord.leading_tone_hint())
+                .filter(|_| options.show_hints);
+            let x = columns.part_x(index, part, parts);
+            draw_figuring(&mut scene, x, figuring.figures(), hint.is_some());
+        }
+
+        if placement.ends_bar {
+            let x = columns.left(index + 1) - 2.0;
+            scene.vertical(x, staff.top, staff.top + 4.0 * SPACE, BAR_LINE);
+            scene.vertical(x, system.0, system.1, BAR_LINE);
+            scene.vertical(x, TAB_TOP, TAB_BOTTOM, BAR_LINE);
+        }
+
+        let Some(realization) = realizations.get(index) else {
+            continue;
+        };
         if realization.shown.is_none() {
             scene.glyphs.push(Glyph {
                 x: columns.center(index),
@@ -301,14 +343,23 @@ pub fn scene(
                 music: false,
                 size: 11.0,
                 faded: true,
+                warning: false,
             });
             continue;
         }
         for (part, sounding) in realization.parts.iter().enumerate() {
-            let x = columns.part_x(index, part);
-            draw_voicing(&mut scene, x, &sounding.notes, key, &treble, &bass);
+            let x = columns.part_x(index, part, parts);
+            draw_voicing(
+                &mut scene,
+                x,
+                &sounding.notes,
+                key,
+                part_duration,
+                &treble,
+                &bass,
+            );
             if part > 0 {
-                let previous = columns.part_x(index, part - 1);
+                let previous = columns.part_x(index, part - 1, parts);
                 for (pitch, _) in sounding.notes.iter().filter(|(_, struck)| !struck) {
                     let staff = if pitch.staff_position() >= MIDDLE_C_POSITION {
                         &treble
@@ -316,11 +367,11 @@ pub fn scene(
                         &bass
                     };
                     let y = staff.y(pitch.staff_position()) + 0.6 * SPACE;
-                    scene
-                        .ties
-                        .push(Tie::below(previous + 0.8 * SPACE, x - 0.8 * SPACE, y));
+                    let start = previous + 0.8 * SPACE + dot_room(part_duration);
+                    scene.ties.push(Tie::below(start, x - 0.8 * SPACE, y));
                 }
             }
+            draw_rhythm_sign(&mut scene, x, part_duration, options.tablature);
             draw_fingering(
                 &mut scene,
                 x,
@@ -333,13 +384,57 @@ pub fn scene(
     scene
 }
 
+/// The columns for a bass line, sized by each note's duration and parts.
+pub fn columns_for(line: &BassLine) -> Columns {
+    let notes: Vec<(Duration, usize)> = line
+        .notes()
+        .iter()
+        .map(|n| (n.duration, n.figurings.parts().len()))
+        .collect();
+    Columns::new(line.key(), &notes)
+}
+
+/// Extra room a dot takes after a notehead.
+fn dot_room(duration: Duration) -> f32 {
+    if duration.dotted { 0.8 * SPACE } else { 0.0 }
+}
+
+/// A rhythm sign above the tablature, as in lute and theorbo sources: above
+/// the diapason ledger lines in Italian tablature, just above the staff in
+/// French.
+fn draw_rhythm_sign(scene: &mut Scene, x: f32, duration: Duration, style: TablatureStyle) {
+    let glyph = match duration.value {
+        NoteValue::Whole => "\u{EBA7}",
+        NoteValue::Half => "\u{EBA8}",
+        NoteValue::Quarter => "\u{EBA9}",
+        NoteValue::Eighth => "\u{EBAA}",
+        NoteValue::Sixteenth => "\u{EBAB}",
+    };
+    let y = match style {
+        TablatureStyle::Italian => TAB_TOP - 3.0 * TAB_LINE,
+        TablatureStyle::French => TAB_TOP - 1.1 * TAB_LINE,
+    };
+    scene.glyph(x, y, glyph, true, RHYTHM_SIZE);
+    if duration.dotted {
+        scene.glyph(
+            x + 0.9 * SPACE,
+            y - 0.6 * SPACE,
+            "\u{E1E7}",
+            true,
+            RHYTHM_SIZE,
+        );
+    }
+}
+
 /// Draws a voicing on the grand staff: middle C and up on the treble staff.
-/// Unisons are drawn once; the upper note of a second moves right.
+/// Unisons are drawn once; the upper note of a second moves right. Each
+/// staff's notes share one stem.
 fn draw_voicing(
     scene: &mut Scene,
     x: f32,
     voicing: &[(Pitch, bool)],
     key: Key,
+    duration: Duration,
     treble: &Staff,
     bass: &Staff,
 ) {
@@ -348,27 +443,25 @@ fn draw_voicing(
     notes.sort_by_key(|(p, _)| (p.staff_position(), p.semitones()));
     notes.dedup_by_key(|(p, _)| *p);
     for (staff, on_treble) in [(treble, true), (bass, false)] {
+        let on_staff: Vec<(Pitch, bool)> = notes
+            .iter()
+            .copied()
+            .filter(|(p, _)| (p.staff_position() >= MIDDLE_C_POSITION) == on_treble)
+            .collect();
         let mut previous: Option<(i16, bool)> = None;
         let mut accidentals = 0;
-        for &(pitch, struck) in notes
-            .iter()
-            .filter(|(p, _)| (p.staff_position() >= MIDDLE_C_POSITION) == on_treble)
-        {
+        for &(pitch, struck) in &on_staff {
             let position = pitch.staff_position();
             let shifted = previous.is_some_and(|(p, s)| position - p == 1 && !s);
-            let shift = if shifted { 1.25 * SPACE } else { 0.0 };
-            if staff.draw_note(
-                scene,
-                x,
-                pitch,
-                key,
-                shift,
-                struck.then_some(accidentals % 2),
-            ) {
+            let shift = if shifted { 1.18 * SPACE } else { 0.0 };
+            let column = struck.then_some(accidentals % 2);
+            if staff.draw_note(scene, x, pitch, key, duration, shift, column) {
                 accidentals += 1;
             }
             previous = Some((position, shifted));
         }
+        let positions: Vec<i16> = on_staff.iter().map(|(p, _)| p.staff_position()).collect();
+        staff.draw_stem(scene, x, &positions, duration.value);
     }
 }
 
@@ -479,22 +572,38 @@ impl Staff {
     /// Draws a whole note with ledger lines and, where the key signature
     /// does not already give it, its accidental. `shift` moves the notehead
     /// sideways, e.g. for the upper note of a second.
-    /// Returns whether an accidental was drawn. `accidental_column` moves it
-    /// further left to keep stacked accidentals apart; `None` draws none,
-    /// as for a tied note.
+    /// Draws a notehead for `duration` with ledger lines, a dot if dotted,
+    /// and, where the key signature does not already give it, an accidental.
+    /// `shift` moves the notehead sideways, e.g. for the upper note of a
+    /// second. Returns whether an accidental was drawn; `accidental_column`
+    /// moves it further left to keep stacked accidentals apart, and `None`
+    /// draws none, as for a tied note.
+    #[allow(clippy::too_many_arguments)]
     fn draw_note(
         &self,
         scene: &mut Scene,
         x: f32,
         pitch: Pitch,
         key: Key,
+        duration: Duration,
         shift: f32,
         accidental_column: Option<usize>,
     ) -> bool {
         let position = pitch.staff_position();
         let y = self.y(position);
         let head_x = x + shift;
-        scene.glyph(head_x, y, "\u{E0A2}", true, MUSIC_SIZE);
+        let head = match duration.value {
+            NoteValue::Whole => "\u{E0A2}",
+            NoteValue::Half => "\u{E0A3}",
+            _ => "\u{E0A4}",
+        };
+        scene.glyph(head_x, y, head, true, MUSIC_SIZE);
+        if duration.dotted {
+            // A dot sits in a space: a note on a line puts it in the space above.
+            let on_line = (position - self.top_position) % 2 == 0;
+            let dot_y = if on_line { y - HALF } else { y };
+            scene.glyph(head_x + 1.3 * SPACE, dot_y, "\u{E1E7}", true, MUSIC_SIZE);
+        }
 
         let ledgers = (position..=self.bottom_position() - 2)
             .chain(self.top_position + 2..=position)
@@ -511,12 +620,71 @@ impl Staff {
         let accidental = pitch.name.accidental;
         let column =
             accidental_column.filter(|_| accidental != key.signature_accidental(pitch.name.letter));
-        let drawn = column.is_some();
         if let Some(column) = column {
             let ax = x - 1.6 * SPACE - column as f32 * 1.1 * SPACE;
             scene.glyph(ax, y, accidental_glyph(accidental), true, MUSIC_SIZE);
         }
-        drawn
+        column.is_some()
+    }
+
+    /// Draws one stem for noteheads at these positions, with flags for
+    /// eighths and sixteenths: up when the notes lie below the middle line,
+    /// down otherwise. Whole notes have none.
+    fn draw_stem(&self, scene: &mut Scene, x: f32, positions: &[i16], value: NoteValue) {
+        let (Some(&low), Some(&high)) = (positions.iter().min(), positions.iter().max()) else {
+            return;
+        };
+        if value == NoteValue::Whole {
+            return;
+        }
+        let middle = self.top_position - 4;
+        let up = (low + high) < 2 * middle;
+        let half_head = 0.59 * SPACE;
+        let (stem_x, from, to) = if up {
+            (
+                x + half_head - STEM_WIDTH / 2.0,
+                self.y(low),
+                self.y(high) - STEM,
+            )
+        } else {
+            (
+                x - half_head + STEM_WIDTH / 2.0,
+                self.y(high),
+                self.y(low) + STEM,
+            )
+        };
+        scene.vertical(stem_x, from, to, STEM_WIDTH);
+        let flag = match (value.flags(), up) {
+            (1, true) => "\u{E240}",
+            (1, false) => "\u{E241}",
+            (2, true) => "\u{E242}",
+            (2, false) => "\u{E243}",
+            _ => return,
+        };
+        // Flags hang from the stem end, extending to its right.
+        scene.glyph(stem_x + 0.55 * SPACE, to, flag, true, MUSIC_SIZE);
+    }
+
+    /// Draws the time signature: C for 4/4, ¢ for 2/2, else stacked digits.
+    fn draw_time_signature(&self, scene: &mut Scene, x: f32, time: TimeSignature) {
+        let x = x + TIME_SIGNATURE_WIDTH / 2.0 - 4.0;
+        let middle = self.top + 2.0 * SPACE;
+        match (time.beats, time.beat_value) {
+            (4, 4) => scene.glyph(x, middle, "\u{E08A}", true, MUSIC_SIZE),
+            (2, 2) => scene.glyph(x, middle, "\u{E08B}", true, MUSIC_SIZE),
+            (beats, value) => {
+                let digits = |n: u8| -> String {
+                    n.to_string()
+                        .chars()
+                        .map(|d| {
+                            char::from_u32(0xE080 + d.to_digit(10).unwrap_or(0)).unwrap_or(' ')
+                        })
+                        .collect()
+                };
+                scene.glyph(x, self.top + SPACE, &digits(beats), true, MUSIC_SIZE);
+                scene.glyph(x, self.top + 3.0 * SPACE, &digits(value), true, MUSIC_SIZE);
+            }
+        }
     }
 }
 
@@ -547,6 +715,7 @@ fn draw_figuring(scene: &mut Scene, x: f32, figures: &[Figure], hint: bool) {
             music: true,
             size: FIGURE_SIZE,
             faded: true,
+            warning: false,
         });
     }
 }
@@ -633,7 +802,13 @@ impl Scene {
             music,
             size,
             faded: false,
+            warning: false,
         });
+    }
+
+    /// A vertical line, e.g. a stem or a bar line.
+    fn vertical(&mut self, x: f32, from: f32, to: f32, width: f32) {
+        self.bar(x - width / 2.0, from.min(to), width, (to - from).abs());
     }
 }
 
@@ -648,7 +823,8 @@ mod tests {
 
     #[test]
     fn clicks_map_to_columns_and_insert_points() {
-        let columns = Columns::new(key("C major"), &[1, 1]);
+        let q = Duration::QUARTER;
+        let columns = Columns::new(key("C major"), &[(q, 1), (q, 1)]);
         assert_eq!(columns.hit(0.0), ColumnHit::Insert(0));
         assert_eq!(columns.hit(columns.center(0)), ColumnHit::Column(0));
         assert_eq!(columns.hit(columns.center(1)), ColumnHit::Column(1));
@@ -661,13 +837,103 @@ mod tests {
 
     #[test]
     fn a_suspension_column_is_wider_with_one_part_per_figuring() {
-        let columns = Columns::new(key("C major"), &[1, 2, 1]);
-        assert_eq!(columns.width_of(1), 2.0 * COLUMN_WIDTH);
-        assert_eq!(columns.part_x(1, 0), columns.left(1) + COLUMN_WIDTH / 2.0);
-        assert_eq!(columns.part_x(1, 1), columns.left(1) + 1.5 * COLUMN_WIDTH);
-        assert_eq!(columns.hit(columns.part_x(1, 1)), ColumnHit::Column(1));
+        let q = Duration::QUARTER;
+        let columns = Columns::new(key("C major"), &[(q, 1), (q, 2), (q, 1)]);
+        assert!((columns.width_of(1) - 2.0 * MIN_PART_WIDTH).abs() < 0.01);
+        let (first, second) = (columns.part_x(1, 0, 2), columns.part_x(1, 1, 2));
+        assert!(columns.left(1) < first && first < second && second < columns.left(2));
+        assert_eq!(columns.hit(second), ColumnHit::Column(1));
         assert_eq!(columns.hit(columns.center(2)), ColumnHit::Column(2));
         assert_eq!(columns.hit(columns.left(2) + 1.0), ColumnHit::Insert(2));
+    }
+
+    #[test]
+    fn longer_notes_get_wider_columns_but_less_than_in_proportion() {
+        let d = |s: &str| s.parse::<Duration>().unwrap();
+        let columns = Columns::new(key("C major"), &[(d("4"), 1), (d("1"), 1), (d("16"), 1)]);
+        let close = |a: f32, b: f32| (a - b).abs() < 0.01;
+        assert!(close(columns.width_of(0), COLUMN_WIDTH));
+        assert!(close(columns.width_of(1), 2.0 * COLUMN_WIDTH));
+        assert!(close(columns.width_of(2), MIN_PART_WIDTH));
+    }
+
+    #[test]
+    fn notes_get_stems_flags_and_dots_by_value() {
+        let staff = Staff {
+            top: BASS_STAFF_TOP,
+            top_position: BASS_TOP_POSITION,
+        };
+        let drawn = |pitch: &str, duration: &str| {
+            let mut scene = Scene::default();
+            let pitch: Pitch = pitch.parse().unwrap();
+            let duration: Duration = duration.parse().unwrap();
+            staff.draw_note(
+                &mut scene,
+                0.0,
+                pitch,
+                key("C major"),
+                duration,
+                0.0,
+                Some(0),
+            );
+            staff.draw_stem(&mut scene, 0.0, &[pitch.staff_position()], duration.value);
+            scene
+        };
+        let texts = |scene: &Scene| {
+            scene
+                .glyphs
+                .iter()
+                .map(|g| g.text.clone())
+                .collect::<Vec<_>>()
+        };
+        // Whole: open head, no stem.
+        let whole = drawn("C3", "1");
+        assert_eq!(texts(&whole), ["\u{E0A2}"]);
+        assert!(whole.bars.is_empty());
+        // Dotted half on a space: open head, dot, stem.
+        let half = drawn("C3", "2.");
+        assert_eq!(texts(&half), ["\u{E0A3}", "\u{E1E7}"]);
+        assert_eq!(half.bars.len(), 1);
+        // Eighth low on the staff: stem up with an up flag.
+        let eighth = drawn("A2", "8");
+        assert_eq!(texts(&eighth), ["\u{E0A4}", "\u{E240}"]);
+        // Sixteenth high on the staff: stem down with a down flag.
+        let sixteenth = drawn("G3", "16");
+        assert_eq!(texts(&sixteenth), ["\u{E0A4}", "\u{E243}"]);
+        let stem = sixteenth.bars[0];
+        assert!(stem.y >= staff.y(25) - 1.0 && stem.height > 3.0 * SPACE);
+    }
+
+    #[test]
+    fn bar_lines_follow_full_bars() {
+        let k = key("C major");
+        let notes: Vec<BassNote> = ["2", "2", "2.", "4", "2.", "2"]
+            .iter()
+            .map(|d| BassNote {
+                duration: d.parse().unwrap(),
+                ..BassNote::new("C3".parse().unwrap())
+            })
+            .collect();
+        let line = BassLine::with_notes(k, TimeSignature::COMMON, notes);
+        let instrument = intavolatura_core::Instrument::theorbo_in_a();
+        let options = ViewOptions {
+            show_hints: false,
+            tablature: TablatureStyle::Italian,
+        };
+        let s = scene(&line, &[], &instrument, &options);
+        // Bar lines are the tall thin bars at column edges: three rows each.
+        let columns = columns_for(&line);
+        let at = |x: f32| {
+            s.bars
+                .iter()
+                .filter(|b| (b.x + b.width / 2.0 - x).abs() < 0.01)
+                .count()
+        };
+        assert_eq!(at(columns.left(2) - 2.0), 3);
+        assert_eq!(at(columns.left(4) - 2.0), 3);
+        assert_eq!(at(columns.left(3) - 2.0), 0);
+        // The dotted half runs over the second bar line: drawn as a warning.
+        assert!(s.glyphs.iter().any(|g| g.warning));
     }
 
     #[test]
@@ -702,6 +968,7 @@ mod tests {
                 0.0,
                 pitch.parse().unwrap(),
                 key("C major"),
+                Duration::new(NoteValue::Whole),
                 0.0,
                 Some(0),
             );
@@ -730,6 +997,7 @@ mod tests {
                 0.0,
                 pitch.parse().unwrap(),
                 key(k),
+                Duration::new(NoteValue::Whole),
                 0.0,
                 Some(0),
             );
@@ -837,7 +1105,8 @@ mod tests {
         let voicing: Vec<(Pitch, bool)> =
             pitches.iter().map(|p| (p.parse().unwrap(), true)).collect();
         let mut scene = Scene::default();
-        draw_voicing(&mut scene, 0.0, &voicing, key(k), &treble, &bass);
+        let whole = Duration::new(NoteValue::Whole);
+        draw_voicing(&mut scene, 0.0, &voicing, key(k), whole, &treble, &bass);
         scene.glyphs
     }
 
@@ -869,7 +1138,7 @@ mod tests {
             .filter(|g| g.text == "\u{E0A2}")
             .map(|g| g.x)
             .collect();
-        assert_eq!(xs, [0.0, 1.25 * SPACE, 0.0]);
+        assert_eq!(xs, [0.0, 1.18 * SPACE, 0.0]);
     }
 
     #[test]
@@ -877,7 +1146,7 @@ mod tests {
         let k = key("D minor");
         let mut note = BassNote::new("A2".parse().unwrap());
         note.figurings = "".parse().unwrap();
-        let line = BassLine::with_notes(k, vec![note.clone()]);
+        let line = BassLine::with_notes(k, TimeSignature::COMMON, vec![note.clone()]);
         let instrument = intavolatura_core::Instrument::theorbo_in_a();
         let settings = intavolatura_core::Settings::default();
         let realization = intavolatura_core::realize(&note, k, &instrument, &settings);

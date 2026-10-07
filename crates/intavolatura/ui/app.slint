@@ -2,6 +2,7 @@ import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette } from "std-wi
 import "../fonts/Bravura.otf";
 import { KeyPicker } from "key_picker.slint";
 import { ShortcutsPanel } from "help.slint";
+import { DurationBar } from "durations.slint";
 
 // Text centred on (x, y); see `view.rs`.
 export struct Glyph {
@@ -11,6 +12,7 @@ export struct Glyph {
     music: bool,
     size: length,
     faded: bool,
+    warning: bool,
 }
 
 // A filled curve, as SVG path commands in the pixels of its box.
@@ -34,7 +36,7 @@ export struct Bar {
 export component AppWindow inherits Window {
     title: root.window-title;
     preferred-width: 1000px;
-    preferred-height: 720px;
+    preferred-height: 800px;
     background: root.paper;
     forward-focus: main;
 
@@ -63,6 +65,7 @@ export component AppWindow inherits Window {
     property <color> muted: root.dark ? #a9a294 : #6b6b6b;
     property <color> panel: root.dark ? #2a2723 : #ffffff;
     property <color> panel-border: root.dark ? #4a453c : #cccccc;
+    property <color> warning: root.dark ? #ff8a7a : #c0392b;
 
     in property <string> window-title: "Intavolatura";
     in property <[Glyph]> glyphs;
@@ -77,6 +80,12 @@ export component AppWindow inherits Window {
     in property <string> command-key: "Ctrl";
     in-out property <int> key-index;
     in-out property <int> tablature-index;
+    // Time signatures as shown in the picker, and the current one.
+    in property <[string]> time-signatures;
+    in-out property <int> time-index;
+    // The current duration: index into whole … sixteenth, and the dot.
+    in property <int> duration-value;
+    in property <bool> duration-dotted;
     in property <bool> has-selection;
     in property <length> selection-x;
     in property <length> selection-width;
@@ -102,6 +111,9 @@ export component AppWindow inherits Window {
     callback key(string, bool, bool) -> bool;
     callback key-selected(int);
     callback tablature-selected(int);
+    callback time-selected(int);
+    callback duration-selected(int);
+    callback dot-toggled();
     callback figuring-edited(string);
     callback figuring-accepted(string);
     callback open-file();
@@ -160,6 +172,33 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                ComboBox {
+                    width: 90px;
+                    model: root.time-signatures;
+                    current-index <=> root.time-index;
+                    selected => {
+                        root.time-selected(self.current-index);
+                        main.focus();
+                    }
+                }
+
+                DurationBar {
+                    value: root.duration-value;
+                    dotted: root.duration-dotted;
+                    ink: root.ink;
+                    muted: root.muted;
+                    highlight: root.highlight;
+                    panel-border: root.panel-border;
+                    value-selected(index) => {
+                        root.duration-selected(index);
+                        main.focus();
+                    }
+                    dot-toggled => {
+                        root.dot-toggled();
+                        main.focus();
+                    }
+                }
+
                 Text {
                     text: "Tablature";
                     vertical-alignment: center;
@@ -175,12 +214,8 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                Text {
+                Rectangle {
                     horizontal-stretch: 1;
-                    text: root.status;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                    color: root.muted;
                 }
 
                 Button {
@@ -273,7 +308,7 @@ export component AppWindow inherits Window {
                     font-size: glyph.size;
                     horizontal-alignment: center;
                     vertical-alignment: center;
-                    color: glyph.faded ? root.faded-ink : root.ink;
+                    color: glyph.warning ? root.warning : glyph.faded ? root.faded-ink : root.ink;
                 }
 
                 TouchArea {
@@ -308,6 +343,21 @@ export component AppWindow inherits Window {
                             root.figuring-accepted(self.text);
                         }
                     }
+                }
+            }
+
+            Rectangle {
+                height: 24px;
+                background: root.panel;
+                border-width: 0px;
+
+                Text {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    text: root.status;
+                    vertical-alignment: center;
+                    color: root.muted;
+                    overflow: elide;
                 }
             }
         }

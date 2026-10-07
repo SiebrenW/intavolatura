@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use intavolatura_core::file_format::{self, Document};
 use intavolatura_core::{
-    BassLine, BassNote, Editor, Figurings, Instrument, Key, Letter, Pitch, Realization, Settings,
-    realize,
+    BassLine, BassNote, Duration, Editor, Figurings, Instrument, Key, Letter, NoteValue, Pitch,
+    Realization, Settings, TimeSignature, realize,
 };
 
 use crate::preferences::{Preferences, Theme};
@@ -41,6 +41,8 @@ pub struct App {
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
+    /// The duration new notes get: the last one chosen.
+    pub duration: Duration,
     pub editing: bool,
     pub path: Option<PathBuf>,
     /// The bass line as last opened or saved, to tell whether it changed.
@@ -66,6 +68,7 @@ impl App {
             realizations: Vec::new(),
             editing: false,
             saved: BassLine::new(key),
+            duration: Duration::QUARTER,
             path,
             status: String::new(),
         };
@@ -159,13 +162,7 @@ impl App {
     }
 
     pub fn columns(&self) -> Columns {
-        let parts: Vec<usize> = self
-            .line()
-            .notes()
-            .iter()
-            .map(|n| n.figurings.parts().len())
-            .collect();
-        Columns::new(self.line().key(), &parts)
+        view::columns_for(self.line())
     }
 
     pub fn scene(&self) -> view::Scene {
@@ -218,7 +215,18 @@ impl App {
         } else {
             figuring
         };
-        format!("{}  {}  ·  {}", note.pitch, figuring, fingering)
+        let value = match note.duration.value {
+            NoteValue::Whole => "whole",
+            NoteValue::Half => "half",
+            NoteValue::Quarter => "quarter",
+            NoteValue::Eighth => "eighth",
+            NoteValue::Sixteenth => "sixteenth",
+        };
+        let dotted = if note.duration.dotted { "dotted " } else { "" };
+        format!(
+            "{} {dotted}{value}  {}  ·  {}",
+            note.pitch, figuring, fingering
+        )
     }
 
     /// Handles a key press; returns whether it was used.
@@ -269,6 +277,17 @@ impl App {
                 let pin = self.realizations[i].2.cycle(c == ']');
                 self.edit(|e| e.set_pin(i, pin));
             }
+            (Input::Char(c @ '3'..='7'), _) => {
+                let value = NoteValue::ALL[(b'7' - c as u8) as usize];
+                self.set_duration(Duration::new(value));
+            }
+            (Input::Char('.'), _) => {
+                let current = self.current_duration();
+                self.set_duration(Duration {
+                    dotted: !current.dotted,
+                    ..current
+                });
+            }
             (Input::Escape, Some(_)) => self.selected = None,
             _ => return false,
         }
@@ -305,7 +324,8 @@ impl App {
                 self.edit(|e| e.set_pitch(i, pitch));
             }
             ColumnHit::Insert(i) => {
-                self.edit(|e| e.insert(i, pitch));
+                let duration = self.duration;
+                self.edit(|e| e.insert(i, pitch, duration));
                 self.selected = Some(i);
             }
         }
@@ -328,6 +348,24 @@ impl App {
         self.edit(|e| e.set_figurings(i, figurings));
         self.editing = false;
         true
+    }
+
+    /// The selected note's duration, or the one new notes get.
+    pub fn current_duration(&self) -> Duration {
+        self.selected
+            .map_or(self.duration, |i| self.line().notes()[i].duration)
+    }
+
+    /// Sets the selected note's duration, and the one new notes get.
+    pub fn set_duration(&mut self, duration: Duration) {
+        self.duration = duration;
+        if let Some(i) = self.selected {
+            self.edit(|e| e.set_duration(i, duration));
+        }
+    }
+
+    pub fn set_time(&mut self, time: TimeSignature) {
+        self.edit(|e| e.set_time(time));
     }
 
     pub fn set_key(&mut self, key: Key) {

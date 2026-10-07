@@ -5,6 +5,7 @@
 
 pub mod bass_line;
 pub mod chord;
+pub mod duration;
 pub mod figuring;
 pub mod file_format;
 pub mod fingering;
@@ -17,6 +18,7 @@ pub mod resolution;
 
 pub use bass_line::{BassLine, BassNote, Editor};
 pub use chord::{Chord, ChordTone};
+pub use duration::{Duration, NoteValue, Placement, TimeSignature, place};
 pub use figuring::{Figure, FigureAccidental, Figuring, Figurings, Shape};
 pub use file_format::{Document, ReadError};
 pub use fingering::{Fingering, HandLimits, candidate_fingerings};
