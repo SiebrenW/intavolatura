@@ -14,8 +14,8 @@ Each step is buildable and tested before the next starts.
 4. [x] **Figuring**: parser for the input syntax, normalised figuring, display form.
 5. [x] **Chord**: intervals; bass note + figuring + key → chord; required notes, dissonances, root, leading-tone hint.
 6. [ ] **Bass line**: columns, editing commands, pins, undo/redo.
-7. [ ] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
-8. [ ] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark.
+7. [x] **Instrument**: courses, tuning, fret counts; the 14-course theorbo in A as data.
+8. [x] **Fingering search**: all valid, playable candidate fingerings for a chord; benchmark (`cargo run --release --example search_bench`).
 9. [ ] **Ranking**: weighted score; tune on real bass lines.
 10. [ ] **File format**: save/load the app's own text format.
 11. [ ] **App: bass staff**: Slint window, bass staff rendering, keyboard and mouse editing, key dropdown.
