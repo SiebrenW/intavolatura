@@ -143,6 +143,25 @@ export component ShortcutsPanel inherits Rectangle {
             }
 
             Section {
+                text: "Playback";
+                color: root.ink;
+            }
+
+            Row {
+                keys: "Space";
+                action: "Play from the selected note (or the start), or stop";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "Esc";
+                action: "Stop playing";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Section {
                 text: "File and editing";
                 color: root.ink;
             }

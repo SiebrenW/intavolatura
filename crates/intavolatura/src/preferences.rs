@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use intavolatura_core::Settings;
+use intavolatura_core::{Settings, Source};
 
 use crate::print::{Contents, PageSize};
 use crate::view::{Signs, TablatureStyle};
@@ -49,8 +49,16 @@ pub struct Preferences {
     pub print_contents: Contents,
     pub page_size: PageSize,
     pub staff_mm: u8,
+    /// Playback: what to play, the pitch of A4 in Hz, the arpeggio spread
+    /// between the courses of a chord in milliseconds, and the volume in percent.
+    pub play_source: Source,
+    pub a4: u16,
+    pub spread_ms: u8,
+    pub volume: u8,
 }
 
+pub const A4_HZ: std::ops::RangeInclusive<u16> = 380..=480;
+pub const SPREAD_MS: std::ops::RangeInclusive<u8> = 0..=100;
 pub const STAFF_MM: std::ops::RangeInclusive<u8> = 5..=12;
 pub const SIGN_SIZES: std::ops::RangeInclusive<u8> = 50..=150;
 
@@ -70,6 +78,10 @@ impl Default for Preferences {
             print_contents: Contents::default(),
             page_size: PageSize::default(),
             staff_mm: 7,
+            play_source: Source::Realization,
+            a4: 415,
+            spread_ms: 25,
+            volume: 70,
         }
     }
 }
@@ -137,6 +149,32 @@ impl Preferences {
                     "letter" => p.page_size = PageSize::Letter,
                     _ => {}
                 },
+                "play_source" => match value {
+                    "realization" => p.play_source = Source::Realization,
+                    "bass" => p.play_source = Source::Bass,
+                    _ => {}
+                },
+                "a4" => {
+                    if let Ok(n) = value.parse::<u16>()
+                        && A4_HZ.contains(&n)
+                    {
+                        p.a4 = n;
+                    }
+                }
+                "spread_ms" => {
+                    if let Ok(n) = value.parse::<u8>()
+                        && SPREAD_MS.contains(&n)
+                    {
+                        p.spread_ms = n;
+                    }
+                }
+                "volume" => {
+                    if let Ok(n) = value.parse::<u8>()
+                        && n <= 100
+                    {
+                        p.volume = n;
+                    }
+                }
                 "staff_mm" => {
                     if let Ok(n) = value.parse::<u8>()
                         && STAFF_MM.contains(&n)
@@ -188,6 +226,16 @@ impl Preferences {
                 }
             ),
             format!("staff_mm = {}", self.staff_mm),
+            format!(
+                "play_source = {}",
+                match self.play_source {
+                    Source::Realization => "realization",
+                    Source::Bass => "bass",
+                }
+            ),
+            format!("a4 = {}", self.a4),
+            format!("spread_ms = {}", self.spread_ms),
+            format!("volume = {}", self.volume),
         ]
         .map(|line| line + "\n")
         .concat()
@@ -254,13 +302,17 @@ mod tests {
             print_contents: Contents::All,
             page_size: PageSize::Letter,
             staff_mm: 9,
+            play_source: Source::Bass,
+            a4: 440,
+            spread_ms: 60,
+            volume: 30,
         };
         assert_eq!(Preferences::parse(&p.to_text()), p);
     }
 
     #[test]
     fn bad_lines_keep_defaults() {
-        let text = "theme = purple\nstaff_mm = 99\npage_size = a0\nsign_size = 300\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
+        let text = "theme = purple\nstaff_mm = 99\na4 = 5\nvolume = 200\nspread_ms = 900\nplay_source = loud\npage_size = a0\nsign_size = 300\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
         assert_eq!(Preferences::parse(text), Preferences::default());
     }
 

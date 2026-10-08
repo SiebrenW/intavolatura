@@ -87,6 +87,12 @@ One bass note together with everything shown for it in every view; the unit of s
 **System**:
 One line of the score on a printed page: the staves of every printed row from a bar line to a bar line, with the clefs and key signature repeated at its start.
 
+**Reference pitch**:
+The frequency of A4 that playback sounds at, e.g. 415 Hz for baroque pitch; a setting, not part of a bass line.
+
+**Tempo**:
+Quarter notes a minute for playback; part of the bass line's file.
+
 ### Instruments
 
 **Instrument**:

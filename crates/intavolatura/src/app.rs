@@ -2,13 +2,15 @@
 
 use std::path::{Path, PathBuf};
 
-use intavolatura_core::file_format::{self, Document};
+use intavolatura_core::file_format::{self, Document, TEMPOS};
 use intavolatura_core::musicxml;
 use intavolatura_core::{
-    BassLine, BassNote, Duration, Editor, Figurings, Instrument, Key, Letter, NoteValue, Pitch,
-    Realization, Settings, TimeSignature, realize,
+    BassLine, BassNote, DEFAULT_TEMPO, Duration, Editor, Figurings, Instrument, Key, Letter,
+    NoteValue, Pitch, Realization, Settings, Source, TimeSignature, Tuning, realize, schedule,
+    seconds, ticks_at, timing,
 };
 
+use crate::audio::Strike;
 use crate::preferences::{Preferences, Theme};
 use crate::print::{self, Contents, PageSize, PrintOptions};
 use crate::view::{self, ColumnHit, Columns, TablatureStyle, ViewOptions};
@@ -30,6 +32,16 @@ pub enum Input {
 const LOWEST_CLICK: i16 = 9; // E1
 const HIGHEST_CLICK: i16 = 31; // F4
 
+/// Music ready to play.
+pub struct Playback {
+    pub strikes: Vec<Strike>,
+    /// Seconds from the start of the playback to the end of the music.
+    pub end: f32,
+    /// The tick it starts at.
+    pub from: u32,
+    pub volume: f32,
+}
+
 pub struct App {
     editor: Editor,
     instrument: Instrument,
@@ -44,6 +56,10 @@ pub struct App {
     italian_on_line: bool,
     french_on_line: bool,
     print: (Contents, PageSize, u8),
+    playback: (Source, u16, u8, u8),
+    /// Quarter notes a minute; kept in the file.
+    pub tempo: u16,
+    saved_tempo: u16,
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
@@ -78,6 +94,12 @@ impl App {
                 let d = Preferences::default();
                 (d.print_contents, d.page_size, d.staff_mm)
             },
+            playback: {
+                let d = Preferences::default();
+                (d.play_source, d.a4, d.spread_ms, d.volume)
+            },
+            tempo: document.tempo.unwrap_or(DEFAULT_TEMPO),
+            saved_tempo: document.tempo.unwrap_or(DEFAULT_TEMPO),
             realizations: Vec::new(),
             editing: false,
             saved: BassLine::new(key),
@@ -95,6 +117,7 @@ impl App {
             Document {
                 line: BassLine::new(key),
                 instrument: Instrument::theorbo_in_a(),
+                tempo: None,
             },
             None,
         )
@@ -112,11 +135,13 @@ impl App {
         let document = Document {
             line: self.line().clone(),
             instrument: self.instrument.clone(),
+            tempo: Some(self.tempo),
         };
         match std::fs::write(&path, file_format::write(&document)) {
             Ok(()) => {
                 self.status = format!("Saved {}", path.display());
                 self.saved = self.line().clone();
+                self.saved_tempo = self.tempo;
                 self.path = Some(path);
                 true
             }
@@ -179,7 +204,7 @@ impl App {
     /// Whether the bass line differs from the file it was opened from or
     /// last saved to.
     pub fn is_modified(&self) -> bool {
-        *self.line() != self.saved
+        *self.line() != self.saved || self.tempo != self.saved_tempo
     }
 
     /// The window title: file name, a dot when modified, the app name.
@@ -207,11 +232,20 @@ impl App {
             print_contents: self.print.0,
             page_size: self.print.1,
             staff_mm: self.print.2,
+            play_source: self.playback.0,
+            a4: self.playback.1,
+            spread_ms: self.playback.2,
+            volume: self.playback.3,
         }
     }
 
     /// Applies new preferences, recomputing every realization if the
     /// fingering settings changed.
+    /// Sets the tempo in quarter notes a minute.
+    pub fn set_tempo(&mut self, tempo: u16) {
+        self.tempo = tempo.clamp(*TEMPOS.start(), *TEMPOS.end());
+    }
+
     pub fn set_preferences(&mut self, preferences: &Preferences) {
         self.theme = preferences.theme;
         self.sign_size = preferences.sign_size;
@@ -224,6 +258,12 @@ impl App {
         );
         self.tablature = preferences.tablature;
         self.show_hints = preferences.show_hints;
+        self.playback = (
+            preferences.play_source,
+            preferences.a4,
+            preferences.spread_ms,
+            preferences.volume,
+        );
         let settings = preferences.settings();
         if settings != self.settings {
             self.settings = settings;
@@ -253,6 +293,51 @@ impl App {
             signs: self.preferences().signs(),
         };
         view::scene(self.line(), &realizations, &self.tuned, &options)
+    }
+
+    /// What to play from the selected note (or the start), as strikes in
+    /// seconds from there, the length of the music, and the tick it starts at.
+    pub fn playback(&self) -> Playback {
+        let line = self.line();
+        let timings = timing(line);
+        let from = self
+            .selected
+            .and_then(|i| timings.notes.get(i))
+            .map_or(0, |n| n.start);
+        let (source, a4, spread_ms, _) = self.playback;
+        let realizations: Vec<Realization> = self
+            .realizations
+            .iter()
+            .map(|(_, _, r)| r.clone())
+            .collect();
+        let tuning = Tuning { a4: a4 as f32 };
+        let tempo = self.tempo as f32;
+        let mut strikes: Vec<Strike> = schedule(line, &realizations, &self.tuned, source)
+            .into_iter()
+            .filter(|p| p.start >= from)
+            .map(|p| Strike {
+                seconds: seconds(p.start - from, tempo)
+                    + p.order as f32 * spread_ms as f32 / 1000.0,
+                voice: p.voice,
+                frequency: tuning.frequency(p.semitones),
+            })
+            .collect();
+        strikes.sort_by(|a, b| a.seconds.total_cmp(&b.seconds));
+        Playback {
+            strikes,
+            end: seconds(timings.end().saturating_sub(from), tempo),
+            from,
+            volume: self.playback.3 as f32 / 100.0,
+        }
+    }
+
+    /// The bass note sounding `seconds` into a playback that began at `from`.
+    pub fn note_at(&self, from: u32, seconds: f32) -> Option<usize> {
+        let tick = from + ticks_at(seconds, self.tempo as f32);
+        timing(self.line())
+            .notes
+            .iter()
+            .position(|n| tick >= n.start && tick < n.start + n.ticks)
     }
 
     /// One line describing the selected note.
@@ -676,5 +761,33 @@ mod tests {
         // The click spelled F2; the key change keeps the written note.
         assert_eq!(app.line().notes()[0].pitch.to_string(), "F2");
         assert!(app.describe_selection().starts_with("F2"));
+    }
+
+    #[test]
+    fn playback_starts_at_the_selection_and_follows_the_tempo() {
+        let mut app = App::empty("C major".parse().unwrap());
+        for pitch in ["C3", "G2", "A2"] {
+            let n = app.line().notes().len();
+            app.editor
+                .insert(n, pitch.parse().unwrap(), Duration::QUARTER);
+        }
+        app.update_realizations();
+        app.tempo = 60;
+        app.selected = Some(1);
+        let playback = app.playback();
+        assert_eq!(playback.from, 8);
+        assert_eq!(playback.strikes[0].seconds, 0.0);
+        assert!((playback.end - 2.0).abs() < 1e-4);
+        assert!(
+            playback
+                .strikes
+                .windows(2)
+                .all(|w| w[0].seconds <= w[1].seconds)
+        );
+        assert_eq!(app.note_at(8, 0.5), Some(1));
+        assert_eq!(app.note_at(8, 1.5), Some(2));
+        assert_eq!(app.note_at(8, 2.5), None);
+        app.tempo = 90;
+        assert!(!app.is_modified() || app.tempo != app.saved_tempo);
     }
 }

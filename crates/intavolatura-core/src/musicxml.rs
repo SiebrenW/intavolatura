@@ -710,6 +710,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
         document: Document {
             line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
             instrument: Instrument::theorbo_in_a(),
+            tempo: None,
         },
         changes,
     })

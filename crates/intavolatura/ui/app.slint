@@ -1,4 +1,4 @@
-import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette, ScrollView } from "std-widgets.slint";
+import { ComboBox, Button, AboutSlint, CheckBox, SpinBox, Palette, ScrollView, Slider } from "std-widgets.slint";
 import "../fonts/Bravura.otf";
 import { KeyPicker } from "key_picker.slint";
 import { ShortcutsPanel } from "help.slint";
@@ -117,6 +117,19 @@ export component AppWindow inherits Window {
     in-out property <int> staff-mm;
     callback export-pdf();
 
+    // Playback: the tempo is the file's, the rest are preferences.
+    in property <bool> playing;
+    in property <bool> has-playhead;
+    in property <length> playhead-x;
+    in property <length> playhead-width;
+    in-out property <int> tempo;
+    in-out property <int> play-source;
+    in-out property <int> a4;
+    in-out property <int> spread-ms;
+    in-out property <float> volume;
+    callback play-toggled();
+    callback tempo-edited(int);
+
     // A click in content coordinates.
     callback clicked(length, length);
     // A key press: text, shift, control (command on macOS). Returns whether handled.
@@ -144,6 +157,10 @@ export component AppWindow inherits Window {
 
     public function choose-meter-change() {
         meter-change-popup.show();
+    }
+
+    public function show-playback() {
+        playback.show();
     }
 
     public function show-export() {
@@ -256,6 +273,26 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
+                    // Icon only, to keep the header narrow; Space plays too.
+                    accessible-label: root.playing ? "Stop" : "Play";
+                    icon: root.playing ? @image-url("icons/square.svg") : @image-url("icons/play.svg");
+                    colorize-icon: true;
+                    clicked => {
+                        root.play-toggled();
+                        main.focus();
+                    }
+                }
+
+                Button {
+                    accessible-label: "Playback settings";
+                    icon: @image-url("icons/timer.svg");
+                    colorize-icon: true;
+                    clicked => {
+                        playback.show();
+                    }
+                }
+
+                Button {
                     text: "Open";
                     icon: @image-url("icons/folder-open.svg");
                     colorize-icon: true;
@@ -329,6 +366,14 @@ export component AppWindow inherits Window {
                     width: root.selection-width;
                     height: flick.content-height;
                     background: root.highlight;
+                }
+
+                if root.has-playhead: Rectangle {
+                    x: root.playhead-x;
+                    y: 0;
+                    width: root.playhead-width;
+                    height: flick.content-height;
+                    background: Palette.accent-background.with-alpha(0.22);
                 }
 
                 for bar in root.bars: Rectangle {
@@ -410,6 +455,154 @@ export component AppWindow inherits Window {
                     vertical-alignment: center;
                     color: root.muted;
                     overflow: elide;
+                }
+            }
+        }
+    }
+
+    playback := PopupWindow {
+        x: root.width - 480px;
+        y: 44px;
+        width: 320px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Playback";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Tempo (quarter notes a minute)";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 20;
+                        maximum: 300;
+                        value <=> root.tempo;
+                        edited(value) => {
+                            root.tempo-edited(value);
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Play";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    ComboBox {
+                        width: 160px;
+                        model: ["Chords as fingered", "Bass notes only"];
+                        current-index <=> root.play-source;
+                        selected => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Pitch, A4 (Hz)";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 380;
+                        maximum: 480;
+                        value <=> root.a4;
+                        edited(value) => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 4px;
+
+                    for hz in [392, 415, 430, 440, 466]: Button {
+                        text: hz;
+                        primary: root.a4 == hz;
+                        clicked => {
+                            root.a4 = hz;
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                Text {
+                    text: "415 baroque · 392 French baroque · 430 classical · 440 modern · 466 Venetian";
+                    wrap: word-wrap;
+                    color: root.muted;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Arpeggio spread (ms)";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 0;
+                        maximum: 100;
+                        step-size: 5;
+                        value <=> root.spread-ms;
+                        edited(value) => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Volume";
+                        vertical-alignment: center;
+                    }
+
+                    Slider {
+                        minimum: 0;
+                        maximum: 100;
+                        value <=> root.volume;
+                        released => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Space plays from the selected note and stops; Esc stops too.";
+                    wrap: word-wrap;
+                    color: root.muted;
                 }
             }
         }

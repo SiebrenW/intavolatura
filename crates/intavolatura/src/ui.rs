@@ -1,10 +1,10 @@
 //! Connects the app state to the Slint window.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Duration, Key, Mode, NoteValue, TimeSignature};
+use intavolatura_core::{Duration, Key, Mode, NoteValue, Source, TimeSignature};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -12,6 +12,7 @@ use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecMod
 use intavolatura_core::musicxml::{self, PartInfo};
 
 use crate::app::{App, Input};
+use crate::audio::Player;
 use crate::preferences::{Preferences, Theme};
 use crate::print::{Contents, PageSize};
 use crate::view::{self, TablatureStyle};
@@ -26,6 +27,15 @@ struct Shared {
     app: Rc<RefCell<App>>,
     keys: Rc<[Key]>,
     import: Rc<RefCell<Option<PendingImport>>>,
+    play: Rc<Play>,
+}
+
+/// Playback: the audio output, the tick it started from while it plays,
+/// and the timer that moves the playhead.
+struct Play {
+    player: RefCell<Player>,
+    from: Cell<Option<u32>>,
+    timer: slint::Timer,
 }
 
 /// A MusicXML score waiting for its part to be chosen: text, file, parts.
@@ -71,6 +81,11 @@ pub fn wire(window: &AppWindow, app: App) {
         app: Rc::new(RefCell::new(app)),
         keys,
         import: Rc::new(RefCell::new(None)),
+        play: Rc::new(Play {
+            player: RefCell::new(Player::new()),
+            from: Cell::new(None),
+            timer: slint::Timer::default(),
+        }),
     };
     refresh(window, &shared.app.borrow(), &shared.keys);
 
@@ -83,6 +98,14 @@ pub fn wire(window: &AppWindow, app: App) {
         }
         if !editing && !command && text == "t" && s.app.borrow().selected.is_some() {
             s.window.unwrap().invoke_choose_meter_change();
+            return true;
+        }
+        if !editing && !command && text == " " {
+            toggle_play(&s);
+            return true;
+        }
+        if text == SharedString::from(SlintKey::Escape) && s.play.from.get().is_some() {
+            stop_play(&s);
             return true;
         }
         let Some(input) = input(&text) else {
@@ -217,10 +240,26 @@ pub fn wire(window: &AppWindow, app: App) {
                     .and_then(|i| PageSize::ALL.get(i).copied())
                     .unwrap_or_default(),
                 staff_mm: window.get_staff_mm().clamp(5, 12) as u8,
+                play_source: if window.get_play_source() == 1 {
+                    Source::Bass
+                } else {
+                    Source::Realization
+                },
+                a4: window.get_a4().clamp(380, 480) as u16,
+                spread_ms: window.get_spread_ms().clamp(0, 100) as u8,
+                volume: window.get_volume().clamp(0.0, 100.0).round() as u8,
                 ..app.preferences()
             };
             apply_preferences(app, &preferences);
         })
+    });
+
+    let s = shared.clone();
+    window.on_play_toggled(move || toggle_play(&s));
+
+    let s = shared.clone();
+    window.on_tempo_edited(move |tempo| {
+        s.update(|_, app| app.set_tempo(tempo.clamp(20, 300) as u16));
     });
 
     let s = shared.clone();
@@ -491,6 +530,68 @@ fn export_file(s: &Shared, with_realization: bool) {
     }
 }
 
+/// Plays from the selected note, or stops if it is playing.
+fn toggle_play(s: &Shared) {
+    if s.play.from.get().is_some() {
+        stop_play(s);
+        return;
+    }
+    let window = s.window.unwrap();
+    let playback = s.app.borrow().playback();
+    if playback.strikes.is_empty() {
+        s.update(|_, app| app.status = "Nothing to play".to_string());
+        return;
+    }
+    let started = s
+        .play
+        .player
+        .borrow_mut()
+        .play(&playback.strikes, playback.end, playback.volume);
+    if let Err(e) = started {
+        s.update(|_, app| app.status = format!("Cannot play: {e}"));
+        return;
+    }
+    s.play.from.set(Some(playback.from));
+    window.set_playing(true);
+    let tick = s.clone();
+    s.play.timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(30),
+        move || follow_playhead(&tick),
+    );
+}
+
+/// Stops playing and clears the playhead.
+fn stop_play(s: &Shared) {
+    s.play.player.borrow_mut().stop();
+    s.play.timer.stop();
+    s.play.from.set(None);
+    let window = s.window.unwrap();
+    window.set_playing(false);
+    window.set_has_playhead(false);
+}
+
+/// Moves the playhead to the sounding column, scrolling it into view.
+fn follow_playhead(s: &Shared) {
+    let Some(from) = s.play.from.get() else {
+        return;
+    };
+    let position = s.play.player.borrow().position();
+    let Some(position) = position else {
+        stop_play(s);
+        return;
+    };
+    let window = s.window.unwrap();
+    let app = s.app.borrow();
+    if let Some(index) = app.note_at(from, position) {
+        let columns = app.columns();
+        window.set_playhead_x(columns.left(index));
+        window.set_playhead_width(columns.width_of(index));
+        window.set_has_playhead(true);
+        scroll_into_view(&window, columns.center(index));
+    }
+}
+
 /// Asks where to write the PDF, then exports.
 fn export_pdf(s: &Shared) {
     let current = s.app.borrow().path.clone();
@@ -616,6 +717,10 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
             .unwrap_or(0) as i32,
     );
     window.set_staff_mm(preferences.staff_mm.into());
+    window.set_play_source(i32::from(preferences.play_source == Source::Bass));
+    window.set_a4(preferences.a4.into());
+    window.set_spread_ms(preferences.spread_ms.into());
+    window.set_volume(f32::from(preferences.volume));
 
     let time = app.line().time();
     window.set_time_index(
@@ -664,6 +769,7 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
         app.status.clone()
     };
     window.set_status(status.into());
+    window.set_tempo(app.tempo.into());
 }
 
 /// Scrolls horizontally so the column centred at `center` is visible.

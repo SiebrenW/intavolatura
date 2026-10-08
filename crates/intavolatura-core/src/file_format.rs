@@ -4,6 +4,7 @@
 //! intavolatura 1
 //! key: D minor
 //! time: 3/2
+//! tempo: 72
 //! instrument: theorbo-a-14
 //!
 //! D3 2
@@ -12,7 +13,7 @@
 //! ```
 //!
 //! After the version line come `name: value` headers (`time` defaults to
-//! 4/4), a blank line, then one bass note per line: the written pitch and
+//! 4/4; `tempo` is quarter notes a minute and optional), a blank line, then one bass note per line: the written pitch and
 //! its duration (`4` for a quarter, `2.` for a dotted half; a quarter if
 //! left out), optionally its figurings in canonical form, optionally its
 //! pinned fingering as `course:fret` pairs with course 1 first. Unplayed
@@ -26,6 +27,9 @@ use crate::duration::{Duration, TimeSignature};
 use crate::fingering::Fingering;
 use crate::instrument::{Instrument, MAX_COURSES};
 
+/// The tempos a file may ask for, in quarter notes a minute.
+pub const TEMPOS: std::ops::RangeInclusive<u16> = 20..=300;
+
 const VERSION_LINE: &str = "intavolatura 1";
 
 /// What a saved file holds.
@@ -34,6 +38,8 @@ pub struct Document {
     pub line: BassLine,
     /// The instrument as defined, before any retuning to the key.
     pub instrument: Instrument,
+    /// Quarter notes a minute for playback, if the file sets one.
+    pub tempo: Option<u16>,
 }
 
 /// Writes a document in the file format.
@@ -45,6 +51,9 @@ pub fn write(document: &Document) -> String {
     );
     if let Some(upbeat) = document.line.upbeat() {
         out.push_str(&format!("upbeat: {upbeat}\n"));
+    }
+    if let Some(tempo) = document.tempo {
+        out.push_str(&format!("tempo: {tempo}\n"));
     }
     out.push_str(&format!("instrument: {}\n\n", document.instrument.id()));
     for note in document.line.notes() {
@@ -90,7 +99,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
     }
 
     let (mut key, mut instrument, mut time) = (None, None, TimeSignature::COMMON);
-    let mut upbeat = None;
+    let (mut upbeat, mut tempo) = (None, None);
     for (n, l) in lines.by_ref() {
         if l.is_empty() {
             break;
@@ -103,6 +112,15 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
             "key" => key = Some(value.parse().map_err(|_| error(n, "invalid key"))?),
             "upbeat" => {
                 upbeat = Some(value.parse().map_err(|_| error(n, "invalid upbeat"))?);
+            }
+            "tempo" => {
+                tempo = Some(
+                    value
+                        .parse::<u16>()
+                        .ok()
+                        .filter(|t| TEMPOS.contains(t))
+                        .ok_or_else(|| error(n, "invalid tempo"))?,
+                );
             }
             "time" => {
                 time = value
@@ -126,6 +144,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
     Ok(Document {
         line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
         instrument,
+        tempo,
     })
 }
 
@@ -294,7 +313,7 @@ r 2 | | time 3/2
                 "unknown instrument",
             ),
             (
-                "intavolatura 1\ntempo: 60\n".to_string(),
+                "intavolatura 1\ncolour: red\n".to_string(),
                 2,
                 "unknown header",
             ),
@@ -348,5 +367,23 @@ r 2 | | time 3/2
             read("intavolatura 1\n\nC3\n").unwrap_err().message,
             "missing key"
         );
+    }
+
+    #[test]
+    fn the_tempo_is_optional_and_checked() {
+        let header = "intavolatura 1\nkey: C major\n";
+        let with = |t: &str| format!("{header}tempo: {t}\ninstrument: theorbo-a-14\n\nC3\n");
+        let doc = read(&with("96")).unwrap();
+        assert_eq!(doc.tempo, Some(96));
+        assert_eq!(read(&write(&doc)).unwrap().tempo, Some(96));
+        assert_eq!(
+            read("intavolatura 1\nkey: C major\ninstrument: theorbo-a-14\n\nC3\n")
+                .unwrap()
+                .tempo,
+            None
+        );
+        assert!(!write(&read(&with("96")).unwrap()).is_empty());
+        assert_eq!(read(&with("5")).unwrap_err().message, "invalid tempo");
+        assert_eq!(read(&with("fast")).unwrap_err().message, "invalid tempo");
     }
 }

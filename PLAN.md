@@ -48,18 +48,13 @@ Decided:
 Goal: hear the bass line and its realization as the theorbo would sound, to judge voicings and fingerings by ear.
 
 Steps:
-19. [ ] **Audio engine** (core-independent module in the app): a plucked-string synthesizer (Karplus–Strong), one voice per course, so a re-struck course stops its previous note and open diapasons ring long. Output through `cpal`; started lazily on first play, so startup stays fast.
-20. [ ] **Scheduling**: the bass line becomes timed course/fret events (bass on the beat, upper notes slightly arpeggiated), held suspension voices keep sounding, rests are silent. Tempo in quarter notes per minute.
-21. [ ] **Transport**: Space plays and stops from the selected column (or the start); a playhead highlights the sounding column and scrolls with it; Esc stops.
-22. [ ] **Settings**: tempo, arpeggiation spread, volume; play bass only / realization only / both.
-22a. [ ] **Tuning**: a reference pitch so you can play along: presets A = 415 (baroque, default), 440 (modern), 392 (French baroque), 430 (classical), 466 (Venetian/cornetto), or any value. Optionally a temperament (see decisions).
+19. [x] **Audio engine** (core-independent module in the app): a plucked-string synthesizer (Karplus–Strong), one voice per course, so a re-struck course stops its previous note and open diapasons ring long. Output through `cpal`; started lazily on first play, so startup stays fast.
+20. [x] **Scheduling**: the bass line becomes timed course/fret events (bass on the beat, upper notes slightly arpeggiated), held suspension voices keep sounding, rests are silent. Tempo in quarter notes per minute.
+21. [x] **Transport**: Space plays and stops from the selected column (or the start); a playhead highlights the sounding column and scrolls with it; Esc stops.
+22. [x] **Settings**: tempo, arpeggiation spread, volume; play bass only / realization only / both.
+22a. [x] **Tuning**: a reference pitch so you can play along: presets A = 415 (baroque, default), 440 (modern), 392 (French baroque), 430 (classical), 466 (Venetian/cornetto), or any value. Optionally a temperament (see decisions).
 
-Open decisions:
-- Sound: synthesized plucked strings (recommended: no sample files, no licensing, small) or a sampled SoundFont of a lute/theorbo (more realistic, but needs a freely licensed sound set and adds megabytes)?
-- Where tempo lives: in the file per bass line (recommended, like key and meter) or only as a setting?
-- Follow pinned fingerings exactly, so you hear the course choices (recommended), or just the pitches?
-- Reference pitch: a setting (recommended, as you play along with the same instrument across pieces), or per bass line in the file?
-- Temperament: equal only (recommended first: frets make a lute or theorbo close to equal temperament anyway), or also meantone variants (1/4- and 1/6-comma) and Vallotti for playing along with keyboard continuo?
+Decided: synthesized plucked strings, no sample files; tempo in the file (`tempo: 72`, default 72), shown in the Playback popup; pinned and chosen fingerings are what sounds, so you hear the course choices; the reference pitch is a setting (default A = 415) with presets 392, 415, 430, 440, 466 or any value from 380 to 480; equal temperament only, other temperaments are Later. "Both" (bass doubled over the chords) was dropped: the bass is already in the chord. The arpeggio spread (default 25 ms between courses, lowest first) and the volume are settings.
 
 Risks: audio APIs differ per platform; `cpal` covers macOS, Windows and Linux (ALSA/PulseAudio). Audio runs on its own thread so editing stays responsive.
 
@@ -135,12 +130,15 @@ Risks: font embedding and glyph mapping need care; checked by opening output in 
   - [x] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
   - [x] MusicXML export (Export button): the figured bass part, and optionally the realization on a grand staff (held notes tied, filler rests hidden); notes over a bar line are split and tied; no tablature. Check with `cargo run --example to_musicxml -- <in.intav> <out.musicxml>`
   - [x] MusicXML import through Open (.musicxml, .xml, .mxl): choose the part; ties joined, lowest note of chords, voice 1 only, unsupported durations rounded, first time signature only, unsupported figures left empty; a summary lists every change. Check with `cargo run --example from_musicxml -- <file> [part]`. Round trip through MuseScore 4 (export → .mxl → import) gives back the same bass line
+  - [x] Playback: Space plays from the selected note (or the start) and stops, Esc stops; a playhead follows the sounding column; the Playback popup (timer icon) sets tempo (saved in the file), what to play, pitch, arpeggio spread and volume. Plucked-string synthesis (Karplus–Strong, one voice per course), output through `cpal` opened on first play (startup unchanged at about 140 ms). Check sound with `cargo run -p intavolatura --example play -- <in.intav>`
   - [x] PDF export (Export popup → Save PDF…): tablature, figured bass with tablature, or all rows; A4 or Letter; staff height in mm; vector output with a Bravura subset (about 10–15 KB for three systems), systems broken at bar lines, page numbers. Check with `cargo run -p intavolatura --example pdf -- <in.intav> <out.pdf> [tab|bass|all]`
 
 ## Later
 
 - Rarer figure combinations (9/7, 9/4, 7/4, 6/4/2 with a 7, …) and continuation lines.
 - Voice leading between chords.
+- Temperaments for playback (1/4- and 1/6-comma meantone, Vallotti) to play along with keyboard continuo.
+- Playback: a metronome click, looping a selection, a count-in.
 
 ## Figuring input syntax
 
