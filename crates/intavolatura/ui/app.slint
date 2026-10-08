@@ -83,6 +83,9 @@ export component AppWindow inherits Window {
     // Time signatures as shown in the picker, and the current one.
     in property <[string]> time-signatures;
     in-out property <int> time-index;
+    // Upbeat choices for the current time signature; 0 is no upbeat.
+    in property <[string]> upbeats;
+    in-out property <int> upbeat-index;
     // The current duration: index into whole … sixteenth, and the dot.
     in property <int> duration-value;
     in property <bool> duration-dotted;
@@ -115,6 +118,7 @@ export component AppWindow inherits Window {
     callback key-selected(int);
     callback tablature-selected(int);
     callback time-selected(int);
+    callback upbeat-selected(int);
     callback duration-selected(int);
     callback dot-toggled();
     callback figuring-edited(string);
@@ -199,6 +203,16 @@ export component AppWindow inherits Window {
                     current-index <=> root.time-index;
                     selected => {
                         root.time-selected(self.current-index);
+                        main.focus();
+                    }
+                }
+
+                ComboBox {
+                    width: 120px;
+                    model: root.upbeats;
+                    current-index <=> root.upbeat-index;
+                    selected => {
+                        root.upbeat-selected(self.current-index);
                         main.focus();
                     }
                 }

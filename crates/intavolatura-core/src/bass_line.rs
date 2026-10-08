@@ -47,6 +47,8 @@ impl BassNote {
 pub struct BassLine {
     key: Key,
     time: TimeSignature,
+    /// A short first bar of this length, if any.
+    upbeat: Option<Duration>,
     notes: Vec<BassNote>,
 }
 
@@ -57,7 +59,22 @@ impl BassLine {
     }
 
     pub fn with_notes(key: Key, time: TimeSignature, notes: Vec<BassNote>) -> BassLine {
-        BassLine { key, time, notes }
+        BassLine {
+            key,
+            time,
+            upbeat: None,
+            notes,
+        }
+    }
+
+    /// The same bass line with an upbeat of this length (or none).
+    pub fn with_upbeat(mut self, upbeat: Option<Duration>) -> BassLine {
+        self.upbeat = upbeat;
+        self
+    }
+
+    pub fn upbeat(&self) -> Option<Duration> {
+        self.upbeat
     }
 
     pub fn key(&self) -> Key {
@@ -87,6 +104,7 @@ enum Edit {
     /// A new key with the pin of every note, in order.
     SetKey(Key, Vec<Option<Fingering>>),
     SetTime(TimeSignature),
+    SetUpbeat(Option<Duration>),
 }
 
 impl Edit {
@@ -110,6 +128,7 @@ impl Edit {
                 Edit::SetKey(std::mem::replace(&mut line.key, key), old_pins)
             }
             Edit::SetTime(time) => Edit::SetTime(std::mem::replace(&mut line.time, time)),
+            Edit::SetUpbeat(upbeat) => Edit::SetUpbeat(std::mem::replace(&mut line.upbeat, upbeat)),
         }
     }
 }
@@ -155,6 +174,14 @@ impl Editor {
     }
 
     /// Changes the time signature; only the bar lines move.
+    /// Sets the upbeat: a short first bar of this length, or none.
+    pub fn set_upbeat(&mut self, upbeat: Option<Duration>) -> bool {
+        if upbeat == self.line.upbeat {
+            return false;
+        }
+        self.perform(Edit::SetUpbeat(upbeat))
+    }
+
     pub fn set_time(&mut self, time: TimeSignature) -> bool {
         if time == self.line.time {
             return false;

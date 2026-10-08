@@ -69,11 +69,16 @@ impl Timing {
 pub fn timing(line: &BassLine) -> Timing {
     let time = line.time();
     let mut bars = Vec::new();
+    // An upbeat is a short first bar; one as long as a bar is no upbeat.
+    let upbeat = line
+        .upbeat()
+        .map(|d| d.ticks())
+        .filter(|&t| t < time.bar_ticks());
     let mut bar = BarSpan {
         start: 0,
-        length: time.bar_ticks(),
+        length: upbeat.unwrap_or(time.bar_ticks()),
         time,
-        upbeat: false,
+        upbeat: upbeat.is_some(),
         incomplete: false,
     };
     let mut position = 0;
@@ -252,6 +257,16 @@ mod tests {
             .collect();
         assert_eq!(bass, ["2"]);
         assert!(!t.notes[0].bass[0].tied_on);
+    }
+
+    #[test]
+    fn an_upbeat_is_a_short_first_bar() {
+        let text = "intavolatura 1\nkey: C major\ntime: 3/4\nupbeat: 4\ninstrument: theorbo-a-14\n\nG2 4\nC3 2\nE3 4\n";
+        let t = timing(&file_format::read(text).unwrap().line);
+        assert!(t.bars[0].upbeat && t.bars[0].length == 8);
+        assert!(t.notes[0].slices[0].bar_line_after);
+        assert!(t.notes[2].slices[0].bar_line_after);
+        assert_eq!(t.bars[1].start, 8);
     }
 
     #[test]

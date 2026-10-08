@@ -409,6 +409,11 @@ impl App {
         }
     }
 
+    /// Sets the upbeat: a short first bar of this length, or none.
+    pub fn set_upbeat(&mut self, upbeat: Option<Duration>) {
+        self.edit(|e| e.set_upbeat(upbeat));
+    }
+
     pub fn set_time(&mut self, time: TimeSignature) {
         self.edit(|e| e.set_time(time));
     }

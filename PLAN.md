@@ -32,7 +32,7 @@ Goal: real continuo parts fit without warnings.
 
 Steps:
 14. [x] **Ties across bar lines**: a note that runs over a bar line is drawn as tied notes on both sides (as export already writes it), replacing the warning colour. Display only; the model keeps one note.
-15. [ ] **Upbeat**: a bass line can start with an incomplete bar. Bar lines, export (`implicit` first measure) and import (instead of the current warning) follow.
+15. [x] **Upbeat**: a bass line can start with an incomplete bar. Bar lines, export (`implicit` first measure) and import (instead of the current warning) follow.
 16. [ ] **Time signature changes**: a time signature can start at any note; drawn there on both staves, kept in files, exported and imported (instead of being ignored).
 17. [ ] **Uneven suspension splits**: a figuring part can carry its own duration, e.g. a dotted quarter then an eighth for 7–6.
 18. [ ] **Triplets** (optional): three notes in the time of two, for proportio/tripla passages.

@@ -39,11 +39,14 @@ pub struct Document {
 /// Writes a document in the file format.
 pub fn write(document: &Document) -> String {
     let mut out = format!(
-        "{VERSION_LINE}\nkey: {}\ntime: {}\ninstrument: {}\n\n",
+        "{VERSION_LINE}\nkey: {}\ntime: {}\n",
         document.line.key(),
-        document.line.time(),
-        document.instrument.id()
+        document.line.time()
     );
+    if let Some(upbeat) = document.line.upbeat() {
+        out.push_str(&format!("upbeat: {upbeat}\n"));
+    }
+    out.push_str(&format!("instrument: {}\n\n", document.instrument.id()));
     for note in document.line.notes() {
         if note.rest {
             out.push_str(&format!("r {}\n", note.duration));
@@ -83,6 +86,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
     }
 
     let (mut key, mut instrument, mut time) = (None, None, TimeSignature::COMMON);
+    let mut upbeat = None;
     for (n, l) in lines.by_ref() {
         if l.is_empty() {
             break;
@@ -93,6 +97,9 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
         let value = value.trim();
         match name.trim() {
             "key" => key = Some(value.parse().map_err(|_| error(n, "invalid key"))?),
+            "upbeat" => {
+                upbeat = Some(value.parse().map_err(|_| error(n, "invalid upbeat"))?);
+            }
             "time" => {
                 time = value
                     .parse()
@@ -113,7 +120,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
         notes.push(read_note(l, &instrument).map_err(|m| error(n, m))?);
     }
     Ok(Document {
-        line: BassLine::with_notes(key, time, notes),
+        line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
         instrument,
     })
 }
@@ -199,6 +206,7 @@ mod tests {
 intavolatura 1
 key: D minor
 time: 3/2
+upbeat: 2
 instrument: theorbo-a-14
 
 D3 2
@@ -226,6 +234,10 @@ r 2
         assert!(notes[3].figurings.is_empty() && notes[3].pin.is_some());
         assert_eq!(notes[4].figurings.to_string(), "6+ 4-5 3");
         assert_eq!(doc.line.time().to_string(), "3/2");
+        assert_eq!(
+            doc.line.upbeat().map(|d| d.to_string()),
+            Some("2".to_string())
+        );
         assert_eq!(notes[2].duration.to_string(), "2.");
     }
 

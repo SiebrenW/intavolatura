@@ -134,6 +134,17 @@ pub fn wire(window: &AppWindow, app: App) {
     });
 
     let s = shared.clone();
+    window.on_upbeat_selected(move |index| {
+        s.update(|_, app| {
+            let choices = upbeat_choices(app.line().time());
+            let upbeat = usize::try_from(index - 1)
+                .ok()
+                .and_then(|i| choices.get(i).copied());
+            app.set_upbeat(upbeat);
+        })
+    });
+
+    let s = shared.clone();
     window.on_duration_selected(move |index| {
         s.update(|_, app| {
             if let Some(&value) = NoteValue::ALL.get(index as usize) {
@@ -256,6 +267,26 @@ fn key_name(key: Key) -> String {
         Mode::Minor => "minor",
     };
     format!("{}{accidental} {mode}", tonic.letter.as_char())
+}
+
+/// Upbeat lengths that fit in a bar of `time`, shortest first.
+fn upbeat_choices(time: TimeSignature) -> Vec<Duration> {
+    NoteValue::ALL
+        .iter()
+        .rev()
+        .flat_map(|&v| [Duration::new(v), Duration::dotted(v)])
+        .filter(|d| d.ticks() < time.bar_ticks() && d.ticks() >= 4)
+        .collect()
+}
+
+/// An upbeat as a fraction of a whole note: 1/4, 3/8.
+fn upbeat_label(duration: Duration) -> String {
+    let (mut numerator, mut denominator) = (duration.ticks(), intavolatura_core::duration::WHOLE);
+    while numerator % 2 == 0 && denominator % 2 == 0 {
+        numerator /= 2;
+        denominator /= 2;
+    }
+    format!("Upbeat {numerator}/{denominator}")
 }
 
 /// Applies and stores new preferences; a failure to store is shown, not fatal.
@@ -532,6 +563,16 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
             .position(|&t| t == time)
             .unwrap_or(0) as i32,
     );
+    let choices = upbeat_choices(time);
+    let mut labels: Vec<SharedString> = vec!["No upbeat".into()];
+    labels.extend(choices.iter().map(|&d| SharedString::from(upbeat_label(d))));
+    window.set_upbeats(ModelRc::new(VecModel::from(labels)));
+    let upbeat = app.line().upbeat();
+    let upbeat_index = upbeat
+        .and_then(|u| choices.iter().position(|&d| d == u))
+        .map_or(0, |i| i + 1);
+    window.set_upbeat_index(upbeat_index as i32);
+
     let duration = app.current_duration();
     let value = NoteValue::ALL
         .iter()
@@ -579,6 +620,28 @@ fn scroll_into_view(window: &AppWindow, center: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upbeats_offered_fit_in_a_bar() {
+        let labels = |t: &str| {
+            upbeat_choices(t.parse().unwrap())
+                .into_iter()
+                .map(upbeat_label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels("3/4"),
+            [
+                "Upbeat 1/8",
+                "Upbeat 3/16",
+                "Upbeat 1/4",
+                "Upbeat 3/8",
+                "Upbeat 1/2"
+            ]
+        );
+        assert!(labels("4/4").contains(&"Upbeat 3/4".to_string()));
+        assert!(!labels("4/4").contains(&"Upbeat 1/1".to_string()));
+    }
 
     #[test]
     fn key_labels_show_the_signature() {

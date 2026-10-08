@@ -23,6 +23,7 @@ use crate::key::Mode;
 use crate::pitch::Pitch;
 use crate::pitch::{Accidental, Letter};
 use crate::realization::Realization;
+use crate::timing::{BarSpan, timing};
 
 /// Ticks per quarter note: MusicXML's `divisions`.
 const DIVISIONS: u32 = WHOLE / 4;
@@ -159,21 +160,30 @@ fn realization_events<'a>(
 
 /// Writes one part, measure by measure, with one event list per staff.
 fn write_part(out: &mut String, line: &BassLine, id: &str, staves: &[Vec<Event<'_>>], grand: bool) {
-    let bar = line.time().bar_ticks();
-    let end = staves
-        .iter()
-        .flat_map(|s| s.last())
-        .map(|e| e.start + e.ticks)
-        .max()
-        .unwrap_or(0);
-    let measures = end.div_ceil(bar).max(1);
+    // Measures follow the same bars as the screen: an upbeat is measure 0.
+    let mut bars = timing(line).bars;
+    if bars.is_empty() {
+        bars.push(BarSpan {
+            start: 0,
+            length: line.time().bar_ticks(),
+            time: line.time(),
+            upbeat: false,
+            incomplete: false,
+        });
+    }
+    let first = if bars[0].upbeat { 0 } else { 1 };
 
     let _ = writeln!(out, "  <part id=\"{id}\">");
-    for m in 0..measures {
-        let (from, to) = (m * bar, (m + 1) * bar);
-        let _ = writeln!(out, "    <measure number=\"{}\">", m + 1);
+    for (m, bar) in bars.iter().enumerate() {
+        let (from, to) = (bar.start, bar.start + bar.length);
+        let implicit = if bar.upbeat { " implicit=\"yes\"" } else { "" };
+        let _ = writeln!(out, "    <measure number=\"{}\"{implicit}>", m + first);
         if m == 0 {
             write_attributes(out, line, grand);
+        } else if bar.time != bars[m - 1].time {
+            out.push_str("      <attributes>");
+            write_time(out, bar.time);
+            out.push_str("</attributes>\n");
         }
         for (s, staff) in staves.iter().enumerate() {
             let mut written = 0;
@@ -210,11 +220,7 @@ fn write_attributes(out: &mut String, line: &BassLine, grand: bool) {
         Mode::Major => "major",
         Mode::Minor => "minor",
     };
-    let symbol = match (time.beats, time.beat_value) {
-        (4, 4) => " symbol=\"common\"",
-        (2, 2) => " symbol=\"cut\"",
-        _ => "",
-    };
+
     out.push_str("      <attributes>\n");
     let _ = writeln!(out, "        <divisions>{DIVISIONS}</divisions>");
     let _ = writeln!(
@@ -222,11 +228,9 @@ fn write_attributes(out: &mut String, line: &BassLine, grand: bool) {
         "        <key><fifths>{}</fifths><mode>{mode}</mode></key>",
         key.signature()
     );
-    let _ = writeln!(
-        out,
-        "        <time{symbol}><beats>{}</beats><beat-type>{}</beat-type></time>",
-        time.beats, time.beat_value
-    );
+    out.push_str("        ");
+    write_time(out, time);
+    out.push('\n');
     if grand {
         out.push_str("        <staves>2</staves>\n");
         out.push_str("        <clef number=\"1\"><sign>G</sign><line>2</line></clef>\n");
@@ -235,6 +239,19 @@ fn write_attributes(out: &mut String, line: &BassLine, grand: bool) {
         out.push_str("        <clef><sign>F</sign><line>4</line></clef>\n");
     }
     out.push_str("      </attributes>\n");
+}
+
+fn write_time(out: &mut String, time: TimeSignature) {
+    let symbol = match (time.beats, time.beat_value) {
+        (4, 4) => " symbol=\"common\"",
+        (2, 2) => " symbol=\"cut\"",
+        _ => "",
+    };
+    let _ = write!(
+        out,
+        "<time{symbol}><beats>{}</beats><beat-type>{}</beat-type></time>",
+        time.beats, time.beat_value
+    );
 }
 
 fn write_figured_bass(out: &mut String, event: &Event<'_>) {
@@ -478,15 +495,14 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
     let mut voice: Option<String> = None;
     let mut pending: Vec<String> = Vec::new();
     let mut entries: Vec<Entry> = Vec::new();
+    let mut upbeat_ticks: Option<f64> = None;
     let (mut chord_notes, mut other_voices, mut graces) = (0, 0, 0);
 
     for measure in part.children().filter(|n| n.has_tag_name("measure")) {
         let bar = measure.attribute("number").unwrap_or("?").to_string();
-        if measure.attribute("implicit") == Some("yes") && entries.is_empty() {
-            changes.push(format!(
-                "Bar {bar} is an upbeat; the app has none, so bar lines may shift."
-            ));
-        }
+        // An implicit first measure is an upbeat; its length is summed below.
+        let in_upbeat = measure.attribute("implicit") == Some("yes") && entries.is_empty();
+        let upbeat_from = entries.len();
         for node in measure.children().filter(|n| n.is_element()) {
             match node.tag_name().name() {
                 "attributes" => {
@@ -583,6 +599,9 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                 _ => {}
             }
         }
+        if in_upbeat {
+            upbeat_ticks = Some(entries[upbeat_from..].iter().map(|e| e.ticks).sum::<f64>());
+        }
     }
 
     if chord_notes > 0 {
@@ -631,9 +650,19 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
 
     let key = key.unwrap_or_else(|| "C major".parse().expect("valid key"));
     let time = time.unwrap_or(TimeSignature::COMMON);
+    let upbeat = upbeat_ticks.filter(|&t| t > 0.0).map(|ticks| {
+        let (duration, exact) = fit(ticks);
+        if !exact {
+            changes.push(format!(
+                "The upbeat's length has no matching note value; it is now {}.",
+                describe(duration)
+            ));
+        }
+        duration
+    });
     Ok(Import {
         document: Document {
-            line: BassLine::with_notes(key, time, notes),
+            line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
             instrument: Instrument::theorbo_in_a(),
         },
         changes,
@@ -931,9 +960,10 @@ mod tests {
         // the 2.5-quarter rest, as near a half as a dotted half, becomes
         // the shorter.
         assert_eq!(notes, ["D3 4 ", "D2 4. ", "F#2 8 ", "A2 4. #", "r 2"]);
+        // The implicit first measure (a quarter) is now the upbeat.
+        assert_eq!(line.upbeat().map(|d| d.to_string()), Some("4".to_string()));
         let text = imported.changes.join("\n");
         for expected in [
-            "upbeat",
             "changes key",
             "chord notes",
             "other voices",
@@ -943,6 +973,19 @@ mod tests {
         ] {
             assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
         }
+    }
+
+    #[test]
+    fn upbeats_export_as_measure_zero_and_come_back() {
+        let text = "intavolatura 1\nkey: C major\ntime: 3/4\nupbeat: 4\ninstrument: theorbo-a-14\n\nG2 4\nC3 2.\nG2 2\n";
+        let line = document(text);
+        let xml = export(&line, None, "t");
+        assert!(xml.contains("<measure number=\"0\" implicit=\"yes\">"));
+        assert!(xml.contains("<measure number=\"1\">"));
+        let back = import(&xml, "P1").unwrap();
+        assert!(back.changes.is_empty(), "{:?}", back.changes);
+        assert_eq!(back.document.line.upbeat(), line.upbeat());
+        assert_eq!(back.document.line.notes().len(), 3);
     }
 
     #[test]
