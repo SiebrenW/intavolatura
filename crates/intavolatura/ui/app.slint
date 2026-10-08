@@ -279,6 +279,10 @@ export component AppWindow inherits Window {
                 Button {
                     // Icon only, to keep the header narrow; Space plays too.
                     accessible-label: root.playing ? "Stop" : "Play";
+                    Tooltip {
+                        text: root.playing ? @markdown("Stop (Space or Esc)") : @markdown("Play from the selected note (Space)");
+                    }
+
                     icon: root.playing ? @image-url("icons/square.svg") : @image-url("icons/play.svg");
                     colorize-icon: true;
                     clicked => {
@@ -289,6 +293,10 @@ export component AppWindow inherits Window {
 
                 Button {
                     accessible-label: "Playback settings";
+                    Tooltip {
+                        text: @markdown("Playback settings: tempo, pitch, spread");
+                    }
+
                     icon: @image-url("icons/timer.svg");
                     colorize-icon: true;
                     clicked => {
@@ -298,6 +306,10 @@ export component AppWindow inherits Window {
 
                 Button {
                     accessible-label: "Open";
+                    Tooltip {
+                        text: @markdown("Open a file (\{root.command-key} O)");
+                    }
+
                     icon: @image-url("icons/folder-open.svg");
                     colorize-icon: true;
                     clicked => {
@@ -308,6 +320,10 @@ export component AppWindow inherits Window {
 
                 Button {
                     accessible-label: "Save";
+                    Tooltip {
+                        text: @markdown("Save (\{root.command-key} S)");
+                    }
+
                     icon: @image-url("icons/save.svg");
                     colorize-icon: true;
                     clicked => {
@@ -318,6 +334,10 @@ export component AppWindow inherits Window {
 
                 Button {
                     accessible-label: "Export";
+                    Tooltip {
+                        text: @markdown("Export as MusicXML or PDF");
+                    }
+
                     icon: @image-url("icons/file-output.svg");
                     colorize-icon: true;
                     clicked => {
@@ -329,6 +349,10 @@ export component AppWindow inherits Window {
                     // Icon only, to keep the header narrow; the shortcut
                     // overview and popups say what they are.
                     accessible-label: "Keys";
+                    Tooltip {
+                        text: @markdown("Keyboard shortcuts (? or F1)");
+                    }
+
                     icon: @image-url("icons/keyboard.svg");
                     colorize-icon: true;
                     clicked => {
@@ -340,6 +364,10 @@ export component AppWindow inherits Window {
                     // Icon only, to keep the header narrow; the shortcut
                     // overview and popups say what they are.
                     accessible-label: "Settings";
+                    Tooltip {
+                        text: @markdown("Settings");
+                    }
+
                     icon: @image-url("icons/settings.svg");
                     colorize-icon: true;
                     clicked => {
@@ -351,6 +379,10 @@ export component AppWindow inherits Window {
                     // Icon only, to keep the header narrow; the shortcut
                     // overview and popups say what they are.
                     accessible-label: "About";
+                    Tooltip {
+                        text: @markdown("About");
+                    }
+
                     icon: @image-url("icons/info.svg");
                     colorize-icon: true;
                     clicked => {

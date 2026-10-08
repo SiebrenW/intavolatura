@@ -183,13 +183,24 @@ pub fn features(
         bass_octave_lower,
         stretch(fingering),
         flag(optional_missing),
-        flag(thirds > 1),
+        flag(thirds > 1 && !instrument.is_strummed()),
         stopped.iter().copied().max().unwrap_or(0) as f32,
         stopped.len() as f32,
         upper_spread,
         upper_register,
-        (voicing.len() as f32 - 4.0).abs(),
+        note_count(voicing.len(), instrument),
     ]
+}
+
+/// How far the number of notes is from what the instrument's continuo
+/// uses: four, or every course where it is strummed (counted fivefold, as
+/// a strummed chord with a course left out sounds wrong).
+fn note_count(notes: usize, instrument: &Instrument) -> f32 {
+    if instrument.is_strummed() {
+        5.0 * (instrument.courses().len() as f32 - notes as f32).abs()
+    } else {
+        (notes as f32 - 4.0).abs()
+    }
 }
 
 /// Left-hand stretch: fret distance plus half the course distance between
@@ -297,5 +308,27 @@ mod tests {
         let higher = stretch(&fingering(&[(0, 5), (1, 6)]));
         assert!(close < wide_frets && close < wide_courses && higher < close);
         assert_eq!(stretch(&fingering(&[(0, 0), (6, 0)])), 0.0);
+    }
+
+    #[test]
+    fn the_baroque_guitar_prefers_chords_on_every_course() {
+        let key = c_major();
+        let guitar = Instrument::baroque_guitar();
+        for (bass, figuring) in [("C3", ""), ("A2", ""), ("D3", "")] {
+            let chord = Chord::new(
+                bass.parse::<Pitch>().unwrap().name,
+                &figuring.parse().unwrap(),
+                key,
+            );
+            let bass: Pitch = bass.parse().unwrap();
+            let found = candidate_fingerings(&guitar, &chord, bass, HandLimits::default());
+            let ranked = rank(found, &guitar, &chord, bass, &Weights::default());
+            let best = ranked[0].fingering.voicing(&guitar, &chord);
+            // A full strum where one exists, as it does for these chords.
+            let full = ranked
+                .iter()
+                .any(|r| r.fingering.played().count() == guitar.courses().len());
+            assert!(!full || best.len() == 5, "{bass}: {best:?}");
+        }
     }
 }

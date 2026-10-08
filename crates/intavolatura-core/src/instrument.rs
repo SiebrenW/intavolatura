@@ -232,6 +232,12 @@ impl Instrument {
         self.name
     }
 
+    /// Whether continuo is usually strummed on this instrument, so chords
+    /// sounding every course are preferred.
+    pub fn is_strummed(&self) -> bool {
+        self.id == "guitar-5"
+    }
+
     /// Course 1 first: index 0 is course 1.
     pub fn courses(&self) -> &[Course] {
         &self.courses

@@ -1,6 +1,6 @@
 //! Prints the best-ranked fingerings for one chord, to judge the ranking.
 //!
-//! Usage: `cargo run --example show -- <key> <bass> [figuring] [count]`
+//! Usage: `cargo run --example show -- <key> <bass> [figuring] [count] [instrument]`
 //! e.g.   `cargo run --example show -- "D minor" A2 "#" 5`
 
 use intavolatura_core::{
@@ -22,7 +22,10 @@ fn main() {
         .expect("valid figuring");
     let count = args.get(3).map_or(5, |n| n.parse().expect("a number"));
 
-    let instrument = Instrument::theorbo_in_a().with_diapasons_in(key);
+    let id = args.get(4).map_or("theorbo-a-14", String::as_str);
+    let instrument = Instrument::by_id(id)
+        .expect("a known instrument id")
+        .with_diapasons_in(key);
     let chord = Chord::new(bass.name, &figuring, key);
     let found = candidate_fingerings(&instrument, &chord, bass, HandLimits::default());
     let total = found.len();
