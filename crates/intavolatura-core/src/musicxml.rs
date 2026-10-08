@@ -185,7 +185,7 @@ fn write_part(out: &mut String, line: &BassLine, id: &str, staves: &[Vec<Event<'
                 if start == event.start {
                     write_figured_bass(out, event);
                 }
-                let pieces = pieces(stop - start);
+                let pieces = Duration::pieces(stop - start);
                 for (j, piece) in pieces.iter().enumerate() {
                     let first = start == event.start && j == 0;
                     let last = stop == event.start + event.ticks && j == pieces.len() - 1;
@@ -338,22 +338,6 @@ fn write_notes(
         }
         out.push_str("</note>\n");
     }
-}
-
-/// Splits a length into note values, longest first, so that any stretch
-/// can be written: 20 ticks become a half and an eighth.
-fn pieces(mut ticks: u32) -> Vec<Duration> {
-    let mut out = Vec::new();
-    while ticks > 0 {
-        let piece = NoteValue::ALL
-            .into_iter()
-            .flat_map(|v| [Duration::dotted(v), Duration::new(v)])
-            .find(|d| d.ticks() <= ticks)
-            .unwrap_or(Duration::new(NoteValue::Sixteenth));
-        out.push(piece);
-        ticks = ticks.saturating_sub(piece.ticks());
-    }
-    out
 }
 
 fn escape(text: &str) -> String {
@@ -856,7 +840,12 @@ mod tests {
 
     #[test]
     fn lengths_split_into_note_values() {
-        let ticks = |n: u32| pieces(n).iter().map(|d| d.to_string()).collect::<Vec<_>>();
+        let ticks = |n: u32| {
+            Duration::pieces(n)
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(ticks(20), ["2", "8"]);
         assert_eq!(ticks(48), ["1."]);
         assert_eq!(ticks(12), ["4."]);

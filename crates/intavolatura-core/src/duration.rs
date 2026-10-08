@@ -81,6 +81,22 @@ impl Duration {
         if self.dotted { plain * 3 / 2 } else { plain }
     }
 
+    /// Splits a length into note values, longest first, so that any
+    /// stretch can be written: 20 ticks become a half and an eighth.
+    pub fn pieces(mut ticks: u32) -> Vec<Duration> {
+        let mut out = Vec::new();
+        while ticks > 0 {
+            let piece = NoteValue::ALL
+                .into_iter()
+                .flat_map(|v| [Duration::dotted(v), Duration::new(v)])
+                .find(|d| d.ticks() <= ticks)
+                .unwrap_or(Duration::new(NoteValue::Sixteenth));
+            out.push(piece);
+            ticks = ticks.saturating_sub(piece.ticks());
+        }
+        out
+    }
+
     /// The duration of each of `parts` equal parts, if one exists.
     pub fn split(self, parts: usize) -> Option<Duration> {
         let ticks = self.ticks() / parts as u32;

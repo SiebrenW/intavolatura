@@ -6,7 +6,7 @@
 
 use intavolatura_core::{
     Accidental, BassLine, Duration, Figure, FigureAccidental, Instrument, Key, NoteValue, Pitch,
-    Realization, TimeSignature,
+    Realization, TimeSignature, timing,
 };
 
 /// One staff space.
@@ -150,32 +150,42 @@ pub struct Scene {
     pub height: f32,
 }
 
-/// Horizontal layout shared by every row. A column is one bass note; a
-/// suspension's column holds one part per figuring, side by side.
+/// Horizontal layout shared by every row. A column is one bass note,
+/// divided into its slices (see `intavolatura_core::timing`), each as wide
+/// as its duration needs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Columns {
     /// Left edge of each column, followed by the right edge of the last.
     edges: Vec<f32>,
+    /// Left edge of each slice in each column.
+    slices: Vec<Vec<f32>>,
+}
+
+/// Width of a slice: grows with duration, less than in proportion (a whole
+/// note twice a quarter), never too narrow for a chord.
+fn slice_width(ticks: u32) -> f32 {
+    (COLUMN_WIDTH * (ticks as f32 / 8.0).sqrt()).max(MIN_PART_WIDTH)
 }
 
 impl Columns {
-    /// Columns for bass notes of these durations with these numbers of
-    /// figurings.
-    pub fn new(key: Key, notes: &[(Duration, usize)]) -> Columns {
+    /// Columns for notes cut into slices of these lengths in ticks.
+    pub fn new(key: Key, notes: &[Vec<u32>]) -> Columns {
         let mut edges = vec![time_signature_x(key) + TIME_SIGNATURE_WIDTH];
-        for &(duration, parts) in notes {
-            let last = *edges.last().expect("never empty");
-            let by_duration = COLUMN_WIDTH * (duration.ticks() as f32 / 8.0).sqrt();
-            let width = by_duration.max(parts.max(1) as f32 * MIN_PART_WIDTH);
-            edges.push(last + width);
+        let mut slices = Vec::new();
+        for lengths in notes {
+            let mut left = *edges.last().expect("never empty");
+            let mut lefts = Vec::new();
+            for &ticks in lengths {
+                lefts.push(left);
+                left += slice_width(ticks);
+            }
+            if lengths.is_empty() {
+                left += COLUMN_WIDTH;
+            }
+            slices.push(lefts);
+            edges.push(left);
         }
-        Columns { edges }
-    }
-
-    /// Number of parts in a column, judged from its width is not possible,
-    /// so callers pass it to [`Columns::part_x`].
-    fn part_width(&self, index: usize, parts: usize) -> f32 {
-        self.width_of(index) / parts.max(1) as f32
+        Columns { edges, slices }
     }
 
     pub fn count(&self) -> usize {
@@ -200,11 +210,22 @@ impl Columns {
         self.left(index) + self.width_of(index) / 2.0
     }
 
-    /// Centre of part `part` of `parts` within a column; the notehead sits
-    /// a little left of centre to leave room for stems, dots and flags.
-    pub fn part_x(&self, index: usize, part: usize, parts: usize) -> f32 {
-        let width = self.part_width(index, parts);
-        self.left(index) + part as f32 * width + width.min(COLUMN_WIDTH) * 0.45
+    /// Where a slice's notehead goes: a little left of the slice's centre,
+    /// leaving room for stems, dots and flags.
+    pub fn slice_x(&self, index: usize, slice: usize) -> f32 {
+        let (left, right) = self.slice_edges(index, slice);
+        left + (right - left).min(COLUMN_WIDTH) * 0.45
+    }
+
+    /// Left and right edge of a slice; a bar line after it goes at the right.
+    pub fn slice_edges(&self, index: usize, slice: usize) -> (f32, f32) {
+        let lefts = &self.slices[index];
+        let left = lefts.get(slice).copied().unwrap_or(self.left(index));
+        let right = lefts
+            .get(slice + 1)
+            .copied()
+            .unwrap_or(self.left(index + 1));
+        (left, right)
     }
 
     /// Content width, leaving one empty column to click into for appending.
@@ -319,65 +340,78 @@ pub fn scene(
         );
     }
 
-    let placements = line.placements();
-    for (index, note) in line.notes().iter().enumerate() {
-        let parts = note.figurings.parts().len();
-        let part_duration = note.duration.split(parts).unwrap_or(note.duration);
-        let placement = placements[index];
+    let timing = timing(line);
+    for (index, (note, time)) in line.notes().iter().zip(&timing.notes).enumerate() {
+        let x_of = |slice: usize| columns.slice_x(index, slice);
+        let first_glyph = scene.glyphs.len();
 
-        let x = columns.part_x(index, 0, parts);
-        if note.rest {
-            // Silence in every row: rests on the staves, and in the
-            // tablature a rhythm sign over an empty column, as in the sources.
-            for staff in [&staff, &treble, &bass] {
-                staff.draw_rest(&mut scene, x, note.duration);
-            }
-            draw_rhythm_sign(&mut scene, x, note.duration, options.tablature);
-            if placement.crosses_bar {
-                let last = scene.glyphs.len();
-                for glyph in &mut scene.glyphs[last.saturating_sub(4)..] {
-                    glyph.warning = true;
-                }
-            }
-            if placement.ends_bar {
-                let x = columns.left(index + 1) - 2.0;
+        // Bar lines after the slices they follow, through all three rows.
+        for (k, slice) in time.slices.iter().enumerate() {
+            if slice.bar_line_after {
+                let x = columns.slice_edges(index, k).1 - 2.0;
                 scene.vertical(x, staff.top, staff.top + 4.0 * SPACE, BAR_LINE);
                 scene.vertical(x, system.0, system.1, BAR_LINE);
                 scene.vertical(x, TAB_TOP, TAB_BOTTOM, BAR_LINE);
             }
+        }
+
+        // The bass note's own slices sit where the chord slice starting at
+        // the same moment sits.
+        let bass_x = |slice: &intavolatura_core::Slice| {
+            let k = time
+                .slices
+                .iter()
+                .position(|s| s.start == slice.start)
+                .unwrap_or(0);
+            x_of(k)
+        };
+
+        if note.rest {
+            // Silence in every row: rests on the staves, and in the
+            // tablature a rhythm sign over an empty column, as in the sources.
+            for slice in &time.bass {
+                for staff in [&staff, &treble, &bass] {
+                    staff.draw_rest(&mut scene, bass_x(slice), slice.duration);
+                }
+                draw_rhythm_sign(&mut scene, bass_x(slice), slice.duration, options.tablature);
+            }
+            mark_warning(&mut scene, first_glyph, time.warning);
             continue;
         }
 
-        // The bass sounds once, for the whole note, under the first figuring.
-        let first_glyph = scene.glyphs.len();
-        staff.draw_note(&mut scene, x, note.pitch, key, note.duration, 0.0, Some(0));
-        staff.draw_stem(
-            &mut scene,
-            x,
-            &[note.pitch.staff_position()],
-            note.duration.value,
-        );
-        if placement.crosses_bar {
-            for glyph in &mut scene.glyphs[first_glyph..] {
-                glyph.warning = true;
+        // The bass: one note, tied only over bar lines; accidental once.
+        let position = note.pitch.staff_position();
+        for (k, slice) in time.bass.iter().enumerate() {
+            let x = bass_x(slice);
+            let accidental = (k == 0).then_some(0);
+            staff.draw_note(
+                &mut scene,
+                x,
+                note.pitch,
+                key,
+                slice.duration,
+                0.0,
+                accidental,
+            );
+            staff.draw_stem(&mut scene, x, &[position], slice.duration.value);
+            if slice.tied_on {
+                let y = staff.y(position) + 0.6 * SPACE;
+                let start = x + 0.8 * SPACE + dot_room(slice.duration);
+                let end = bass_x(&time.bass[k + 1]) - 0.8 * SPACE;
+                scene.ties.push(Tie::below(start, end, y));
             }
         }
+        mark_warning(&mut scene, first_glyph, time.warning);
 
-        for (part, figuring) in note.figurings.parts().iter().enumerate() {
+        // Figures under the slice where each figuring starts.
+        for (k, slice) in time.slices.iter().enumerate().filter(|(_, s)| s.struck) {
             let hint = realizations
                 .get(index)
-                .and_then(|r| r.parts.get(part))
+                .and_then(|r| r.parts.get(slice.part))
                 .and_then(|p| p.chord.leading_tone_hint())
                 .filter(|_| options.show_hints);
-            let x = columns.part_x(index, part, parts);
-            draw_figuring(&mut scene, x, figuring.figures(), hint.is_some());
-        }
-
-        if placement.ends_bar {
-            let x = columns.left(index + 1) - 2.0;
-            scene.vertical(x, staff.top, staff.top + 4.0 * SPACE, BAR_LINE);
-            scene.vertical(x, system.0, system.1, BAR_LINE);
-            scene.vertical(x, TAB_TOP, TAB_BOTTOM, BAR_LINE);
+            let figuring = &note.figurings.parts()[slice.part];
+            draw_figuring(&mut scene, x_of(k), figuring.figures(), hint.is_some());
         }
 
         let Some(realization) = realizations.get(index) else {
@@ -395,50 +429,65 @@ pub fn scene(
             });
             continue;
         }
-        for (part, sounding) in realization.parts.iter().enumerate() {
-            let x = columns.part_x(index, part, parts);
-            draw_voicing(
-                &mut scene,
-                x,
-                &sounding.notes,
-                key,
-                part_duration,
-                &treble,
-                &bass,
-            );
-            if part > 0 {
-                let previous = columns.part_x(index, part - 1, parts);
-                for (pitch, _) in sounding.notes.iter().filter(|(_, struck)| !struck) {
+        for (k, slice) in time.slices.iter().enumerate() {
+            let sounding = &realization.parts[slice.part];
+            let x = x_of(k);
+            // Accidentals only where a note is struck, not where it is tied.
+            let notes: Vec<(Pitch, bool)> = sounding
+                .notes
+                .iter()
+                .map(|&(p, struck)| (p, slice.struck && struck))
+                .collect();
+            draw_voicing(&mut scene, x, &notes, key, slice.duration, &treble, &bass);
+            if k > 0 {
+                // Tie what carries on from the previous slice: everything
+                // within a part, the held voices where a new part starts.
+                let previous = time.slices[k - 1];
+                let start = x_of(k - 1) + 0.8 * SPACE + dot_room(previous.duration);
+                for &(pitch, struck) in &sounding.notes {
+                    if slice.struck && struck {
+                        continue;
+                    }
                     let staff = if pitch.staff_position() >= MIDDLE_C_POSITION {
                         &treble
                     } else {
                         &bass
                     };
                     let y = staff.y(pitch.staff_position()) + 0.6 * SPACE;
-                    let start = previous + 0.8 * SPACE + dot_room(part_duration);
                     scene.ties.push(Tie::below(start, x - 0.8 * SPACE, y));
                 }
             }
-            draw_rhythm_sign(&mut scene, x, part_duration, options.tablature);
-            draw_fingering(
-                &mut scene,
-                x,
-                &sounding.struck,
-                instrument,
-                options.tablature,
-                options.signs,
-            );
+            draw_rhythm_sign(&mut scene, x, slice.duration, options.tablature);
+            if slice.struck {
+                draw_fingering(
+                    &mut scene,
+                    x,
+                    &sounding.struck,
+                    instrument,
+                    options.tablature,
+                    options.signs,
+                );
+            }
         }
     }
     scene
 }
 
-/// The columns for a bass line, sized by each note's duration and parts.
+/// Draws the glyphs from `first` on in the warning colour, if `warning`.
+fn mark_warning(scene: &mut Scene, first: usize, warning: bool) {
+    if warning {
+        for glyph in &mut scene.glyphs[first..] {
+            glyph.warning = true;
+        }
+    }
+}
+
+/// The columns for a bass line, sized by each note's slices.
 pub fn columns_for(line: &BassLine) -> Columns {
-    let notes: Vec<(Duration, usize)> = line
-        .notes()
+    let notes: Vec<Vec<u32>> = timing(line)
+        .notes
         .iter()
-        .map(|n| (n.duration, n.figurings.parts().len()))
+        .map(|n| n.slices.iter().map(|s| s.duration.ticks()).collect())
         .collect();
     Columns::new(line.key(), &notes)
 }
@@ -920,8 +969,7 @@ mod tests {
 
     #[test]
     fn clicks_map_to_columns_and_insert_points() {
-        let q = Duration::QUARTER;
-        let columns = Columns::new(key("C major"), &[(q, 1), (q, 1)]);
+        let columns = Columns::new(key("C major"), &[vec![8], vec![8]]);
         assert_eq!(columns.hit(0.0), ColumnHit::Insert(0));
         assert_eq!(columns.hit(columns.center(0)), ColumnHit::Column(0));
         assert_eq!(columns.hit(columns.center(1)), ColumnHit::Column(1));
@@ -934,10 +982,10 @@ mod tests {
 
     #[test]
     fn a_suspension_column_is_wider_with_one_part_per_figuring() {
-        let q = Duration::QUARTER;
-        let columns = Columns::new(key("C major"), &[(q, 1), (q, 2), (q, 1)]);
-        assert!((columns.width_of(1) - 2.0 * MIN_PART_WIDTH).abs() < 0.01);
-        let (first, second) = (columns.part_x(1, 0, 2), columns.part_x(1, 1, 2));
+        // A half note with two figurings: two quarter slices.
+        let columns = Columns::new(key("C major"), &[vec![8], vec![8, 8], vec![8]]);
+        assert!((columns.width_of(1) - 2.0 * slice_width(8)).abs() < 0.01);
+        let (first, second) = (columns.slice_x(1, 0), columns.slice_x(1, 1));
         assert!(columns.left(1) < first && first < second && second < columns.left(2));
         assert_eq!(columns.hit(second), ColumnHit::Column(1));
         assert_eq!(columns.hit(columns.center(2)), ColumnHit::Column(2));
@@ -946,8 +994,7 @@ mod tests {
 
     #[test]
     fn longer_notes_get_wider_columns_but_less_than_in_proportion() {
-        let d = |s: &str| s.parse::<Duration>().unwrap();
-        let columns = Columns::new(key("C major"), &[(d("4"), 1), (d("1"), 1), (d("16"), 1)]);
+        let columns = Columns::new(key("C major"), &[vec![8], vec![32], vec![2]]);
         let close = |a: f32, b: f32| (a - b).abs() < 0.01;
         assert!(close(columns.width_of(0), COLUMN_WIDTH));
         assert!(close(columns.width_of(1), 2.0 * COLUMN_WIDTH));
@@ -1030,8 +1077,12 @@ mod tests {
         assert_eq!(at(columns.left(2) - 2.0), 3);
         assert_eq!(at(columns.left(4) - 2.0), 3);
         assert_eq!(at(columns.left(3) - 2.0), 0);
-        // The dotted half runs over the second bar line: drawn as a warning.
-        assert!(s.glyphs.iter().any(|g| g.warning));
+        // The last half note runs over the third bar line: it is drawn as
+        // two tied quarters, not as a warning.
+        assert!(!s.glyphs.iter().any(|g| g.warning));
+        assert_eq!(s.ties.len(), 1);
+        let edge = columns.slice_edges(5, 0).1 - 2.0;
+        assert_eq!(at(edge), 3);
     }
 
     #[test]

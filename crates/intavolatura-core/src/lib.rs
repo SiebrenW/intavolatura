@@ -16,6 +16,7 @@ pub mod pitch;
 pub mod ranking;
 pub mod realization;
 pub mod resolution;
+pub mod timing;
 
 pub use bass_line::{BassLine, BassNote, Editor};
 pub use chord::{Chord, ChordTone};
@@ -29,3 +30,4 @@ pub use pitch::{Accidental, Letter, NoteName, Pitch};
 pub use ranking::{Ranked, Weights, rank};
 pub use realization::{Realization, Settings, realize};
 pub use resolution::{Move, Resolution, resolve};
+pub use timing::{BarSpan, NoteTiming, Slice, Timing, timing};
