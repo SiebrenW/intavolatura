@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Duration, Key, Mode, NoteValue, Source, TimeSignature};
+use intavolatura_core::{Duration, Instrument, Key, Mode, NoteValue, Source, TimeSignature};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -58,6 +58,8 @@ pub fn wire(window: &AppWindow, app: App) {
     let key_names: Vec<SharedString> = keys.iter().map(|&k| key_name(k).into()).collect();
     window.set_keys(ModelRc::new(VecModel::from(key_names)));
     window.set_column_width(view::COLUMN_WIDTH);
+    let names: Vec<SharedString> = Instrument::all().iter().map(|i| i.name().into()).collect();
+    window.set_instruments(ModelRc::new(VecModel::from(names)));
     let times: Vec<SharedString> = TimeSignature::ALL
         .iter()
         .map(|t| match (t.beats, t.beat_value) {
@@ -252,6 +254,13 @@ pub fn wire(window: &AppWindow, app: App) {
             };
             apply_preferences(app, &preferences);
         })
+    });
+
+    let s = shared.clone();
+    window.on_instrument_selected(move |index| {
+        if let Some(instrument) = Instrument::all().into_iter().nth(index as usize) {
+            s.update(|_, app| app.set_instrument(instrument));
+        }
     });
 
     let s = shared.clone();
@@ -770,6 +779,13 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     };
     window.set_status(status.into());
     window.set_tempo(app.tempo.into());
+    let instrument = app.instrument().id();
+    window.set_instrument_index(
+        Instrument::all()
+            .iter()
+            .position(|i| i.id() == instrument)
+            .unwrap_or(0) as i32,
+    );
 }
 
 /// Scrolls horizontally so the column centred at `center` is visible.

@@ -35,7 +35,7 @@ export struct Bar {
 
 export component AppWindow inherits Window {
     title: root.window-title;
-    preferred-width: 1000px;
+    preferred-width: 1080px;
     preferred-height: 800px;
     background: root.paper;
     forward-focus: main;
@@ -127,6 +127,10 @@ export component AppWindow inherits Window {
     in-out property <int> a4;
     in-out property <int> spread-ms;
     in-out property <float> volume;
+    // The instrument: its names in picker order, and the current one.
+    in property <[string]> instruments;
+    in-out property <int> instrument-index;
+    callback instrument-selected(int);
     callback play-toggled();
     callback tempo-edited(int);
 
@@ -216,7 +220,7 @@ export component AppWindow inherits Window {
                 }
 
                 key-picker := KeyPicker {
-                    width: 200px;
+                    width: 160px;
                     names: root.keys;
                     current: root.key-index;
                     label: root.key-label;
@@ -293,7 +297,7 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "Open";
+                    accessible-label: "Open";
                     icon: @image-url("icons/folder-open.svg");
                     colorize-icon: true;
                     clicked => {
@@ -303,7 +307,7 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "Save";
+                    accessible-label: "Save";
                     icon: @image-url("icons/save.svg");
                     colorize-icon: true;
                     clicked => {
@@ -313,7 +317,7 @@ export component AppWindow inherits Window {
                 }
 
                 Button {
-                    text: "Export";
+                    accessible-label: "Export";
                     icon: @image-url("icons/file-output.svg");
                     colorize-icon: true;
                     clicked => {
@@ -444,17 +448,32 @@ export component AppWindow inherits Window {
             }
 
             Rectangle {
-                height: 24px;
+                height: 36px;
                 background: root.panel;
                 border-width: 0px;
 
-                Text {
-                    x: 8px;
-                    width: parent.width - 16px;
-                    text: root.status;
-                    vertical-alignment: center;
-                    color: root.muted;
-                    overflow: elide;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+
+                    Text {
+                        text: root.status;
+                        vertical-alignment: center;
+                        color: root.muted;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+
+                    ComboBox {
+                        width: 270px;
+                        model: root.instruments;
+                        current-index <=> root.instrument-index;
+                        selected => {
+                            root.instrument-selected(self.current-index);
+                            main.focus();
+                        }
+                    }
                 }
             }
         }

@@ -60,6 +60,7 @@ pub struct App {
     /// Quarter notes a minute; kept in the file.
     pub tempo: u16,
     saved_tempo: u16,
+    saved_instrument: &'static str,
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
@@ -77,6 +78,7 @@ impl App {
         let settings = Settings::default();
         let key = document.line.key();
         let tuned = settings.tune(&document.instrument, key);
+        let tuned_id = document.instrument.id();
         let mut app = App {
             selected: (!document.line.notes().is_empty()).then_some(0),
             editor: Editor::new(document.line),
@@ -100,6 +102,7 @@ impl App {
             },
             tempo: document.tempo.unwrap_or(DEFAULT_TEMPO),
             saved_tempo: document.tempo.unwrap_or(DEFAULT_TEMPO),
+            saved_instrument: tuned_id,
             realizations: Vec::new(),
             editing: false,
             saved: BassLine::new(key),
@@ -142,6 +145,7 @@ impl App {
                 self.status = format!("Saved {}", path.display());
                 self.saved = self.line().clone();
                 self.saved_tempo = self.tempo;
+                self.saved_instrument = self.instrument.id();
                 self.path = Some(path);
                 true
             }
@@ -204,7 +208,9 @@ impl App {
     /// Whether the bass line differs from the file it was opened from or
     /// last saved to.
     pub fn is_modified(&self) -> bool {
-        *self.line() != self.saved || self.tempo != self.saved_tempo
+        *self.line() != self.saved
+            || self.tempo != self.saved_tempo
+            || self.instrument.id() != self.saved_instrument
     }
 
     /// The window title: file name, a dot when modified, the app name.
@@ -241,6 +247,23 @@ impl App {
 
     /// Applies new preferences, recomputing every realization if the
     /// fingering settings changed.
+    /// The instrument as defined, before any retuning to the key.
+    pub fn instrument(&self) -> &Instrument {
+        &self.instrument
+    }
+
+    /// Plays the bass line on another instrument; every note is realized
+    /// again.
+    pub fn set_instrument(&mut self, instrument: Instrument) {
+        if instrument == self.instrument {
+            return;
+        }
+        self.instrument = instrument;
+        self.tuned = self.settings.tune(&self.instrument, self.tuned_for);
+        self.realizations.clear();
+        self.update_realizations();
+    }
+
     /// Sets the tempo in quarter notes a minute.
     pub fn set_tempo(&mut self, tempo: u16) {
         self.tempo = tempo.clamp(*TEMPOS.start(), *TEMPOS.end());

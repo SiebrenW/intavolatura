@@ -345,4 +345,18 @@ mod tests {
         assert!(r.parts[0].notes.is_empty());
         assert_eq!(r.cycle(true), None);
     }
+
+    #[test]
+    fn every_instrument_realizes_plain_bass_notes() {
+        let settings = Settings::default();
+        let key = Key::new("C".parse().unwrap(), Mode::Major).unwrap();
+        for instrument in Instrument::all() {
+            let tuned = settings.tune(&instrument, key);
+            for bass in ["C2", "G2", "C3", "E3", "G3", "C4"] {
+                let note = BassNote::new(bass.parse().unwrap());
+                let r = realize(&note, key, &tuned, &settings);
+                assert!(r.shown.is_some(), "{bass} on {}", instrument.name());
+            }
+        }
+    }
 }

@@ -63,8 +63,8 @@ Risks: audio APIs differ per platform; `cpal` covers macOS, Windows and Linux (A
 Goal: realize the same figured bass for other continuo instruments, each in its proper tablature.
 
 Steps:
-23. [ ] **Instrument definitions** as data, with per-instrument rules: courses and tuning, fret counts, diapasons, which tablature styles apply, and realization rules that differ (e.g. on re-entrant guitar the lowest sounding note need not be the bass). Candidates: Renaissance lute in G (6–8 courses), archlute in G (14 courses), 13-course baroque lute (D minor tuning, French tablature), 5-course baroque guitar (re-entrant, with or without bourdons), theorbo in G.
-24. [ ] **Instrument picker** per bass line (files already store `instrument:`), diapason retuning per instrument.
+23. [ ] **Instrument definitions** (done: theorbo in A, Renaissance lute in G with 6, 7 or 8 courses; to do: baroque guitar, archlute, 13-course lute, theorbo in G) as data, with per-instrument rules: courses and tuning, fret counts, diapasons, which tablature styles apply, and realization rules that differ (e.g. on re-entrant guitar the lowest sounding note need not be the bass). Candidates: Renaissance lute in G (6–8 courses), archlute in G (14 courses), 13-course baroque lute (D minor tuning, French tablature), 5-course baroque guitar (re-entrant, with or without bourdons), theorbo in G.
+24. [x] **Instrument picker** per bass line, bottom right of the window (files already store `instrument:`), diapason retuning per instrument. Changing instrument realizes every note again; pinned fingerings are kept and ignored where they do not fit. Not undoable.
 25. [ ] **Tablature drawing generalized**: as many lines as fretted courses (5 for guitar, 6 for lute), each instrument's diapason signs, 7th-course conventions of the lute.
 26. [ ] **Fingering rules per instrument**: hand limits, ranking weights and register defaults tuned per instrument.
 

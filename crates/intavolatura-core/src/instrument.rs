@@ -75,12 +75,49 @@ impl Instrument {
         )
     }
 
+    /// The Renaissance lute in G with 6, 7 or 8 courses: six fretted
+    /// courses in the usual 4th–3rd–4th–4th–4th tuning from G4 down, and
+    /// for the 7th and 8th courses unstopped basses at F2 and D2.
+    pub fn lute_in_g(courses: usize) -> Instrument {
+        assert!(
+            (6..=8).contains(&courses),
+            "a Renaissance lute has 6 to 8 courses"
+        );
+        let course = |open: &str, frets| Course {
+            open: open.parse().expect("valid pitch"),
+            frets,
+        };
+        let all = [
+            course("G4", 8),
+            course("D4", 8),
+            course("A3", 8),
+            course("F3", 8),
+            course("C3", 8),
+            course("G2", 8),
+            course("F2", 0),
+            course("D2", 0),
+        ];
+        let (id, name) = match courses {
+            6 => ("lute-g-6", "Renaissance lute in G (6 courses)"),
+            7 => ("lute-g-7", "Renaissance lute in G (7 courses)"),
+            _ => ("lute-g-8", "Renaissance lute in G (8 courses)"),
+        };
+        Instrument::new(id, name, all[..courses].to_vec())
+    }
+
+    /// Every built-in instrument, in the order of the picker.
+    pub fn all() -> Vec<Instrument> {
+        vec![
+            Instrument::theorbo_in_a(),
+            Instrument::lute_in_g(6),
+            Instrument::lute_in_g(7),
+            Instrument::lute_in_g(8),
+        ]
+    }
+
     /// The built-in instrument with this identifier.
     pub fn by_id(id: &str) -> Option<Instrument> {
-        match id {
-            "theorbo-a-14" => Some(Instrument::theorbo_in_a()),
-            _ => None,
-        }
+        Instrument::all().into_iter().find(|i| i.id == id)
     }
 
     pub fn id(&self) -> &'static str {
@@ -166,5 +203,24 @@ mod tests {
                 "G1"
             ]
         );
+    }
+
+    #[test]
+    fn every_instrument_is_found_by_its_id() {
+        for instrument in Instrument::all() {
+            assert_eq!(Instrument::by_id(instrument.id()), Some(instrument));
+        }
+        assert_eq!(Instrument::by_id("lute"), None);
+    }
+
+    #[test]
+    fn the_lute_is_tuned_in_fourths_with_a_third() {
+        let lute = Instrument::lute_in_g(8);
+        let opens: Vec<String> = lute.courses().iter().map(|c| c.open.to_string()).collect();
+        assert_eq!(opens, ["G4", "D4", "A3", "F3", "C3", "G2", "F2", "D2"]);
+        assert_eq!(Instrument::lute_in_g(6).courses().len(), 6);
+        let d_major = Key::new("D".parse().unwrap(), Mode::Major).unwrap();
+        let retuned = lute.with_diapasons_in(d_major);
+        assert_eq!(retuned.courses()[6].open.to_string(), "F#2");
     }
 }
