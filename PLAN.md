@@ -52,11 +52,14 @@ Steps:
 20. [ ] **Scheduling**: the bass line becomes timed course/fret events (bass on the beat, upper notes slightly arpeggiated), held suspension voices keep sounding, rests are silent. Tempo in quarter notes per minute.
 21. [ ] **Transport**: Space plays and stops from the selected column (or the start); a playhead highlights the sounding column and scrolls with it; Esc stops.
 22. [ ] **Settings**: tempo, arpeggiation spread, volume; play bass only / realization only / both.
+22a. [ ] **Tuning**: a reference pitch so you can play along: presets A = 415 (baroque, default), 440 (modern), 392 (French baroque), 430 (classical), 466 (Venetian/cornetto), or any value. Optionally a temperament (see decisions).
 
 Open decisions:
 - Sound: synthesized plucked strings (recommended: no sample files, no licensing, small) or a sampled SoundFont of a lute/theorbo (more realistic, but needs a freely licensed sound set and adds megabytes)?
 - Where tempo lives: in the file per bass line (recommended, like key and meter) or only as a setting?
 - Follow pinned fingerings exactly, so you hear the course choices (recommended), or just the pitches?
+- Reference pitch: a setting (recommended, as you play along with the same instrument across pieces), or per bass line in the file?
+- Temperament: equal only (recommended first: frets make a lute or theorbo close to equal temperament anyway), or also meantone variants (1/4- and 1/6-comma) and Vallotti for playing along with keyboard continuo?
 
 Risks: audio APIs differ per platform; `cpal` covers macOS, Windows and Linux (ALSA/PulseAudio). Audio runs on its own thread so editing stays responsive.
 
