@@ -96,6 +96,13 @@ export component ShortcutsPanel inherits Rectangle {
             }
 
             Row {
+                keys: "T";
+                action: "Start a new time signature at the note (or remove one)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
                 keys: "R";
                 action: "Turn the note into a rest of the same length, or back";
                 ink: root.ink;

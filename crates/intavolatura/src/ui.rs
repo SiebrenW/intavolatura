@@ -80,6 +80,10 @@ pub fn wire(window: &AppWindow, app: App) {
             s.window.unwrap().invoke_show_shortcuts();
             return true;
         }
+        if !editing && !command && text == "t" && s.app.borrow().selected.is_some() {
+            s.window.unwrap().invoke_choose_meter_change();
+            return true;
+        }
         let Some(input) = input(&text) else {
             return false;
         };
@@ -130,6 +134,16 @@ pub fn wire(window: &AppWindow, app: App) {
             if let Some(&time) = TimeSignature::ALL.get(index as usize) {
                 app.set_time(time);
             }
+        })
+    });
+
+    let s = shared.clone();
+    window.on_meter_change_selected(move |index| {
+        s.update(|_, app| {
+            let time = usize::try_from(index - 1)
+                .ok()
+                .and_then(|i| TimeSignature::ALL.get(i).copied());
+            app.set_time_change(time);
         })
     });
 

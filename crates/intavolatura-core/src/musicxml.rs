@@ -478,6 +478,7 @@ struct Entry {
     ticks: f64,
     figurings: Vec<String>,
     tie_open: bool,
+    time_change: Option<TimeSignature>,
 }
 
 /// Reads part `id` of a score as a bass line on the theorbo.
@@ -496,6 +497,8 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
     let mut pending: Vec<String> = Vec::new();
     let mut entries: Vec<Entry> = Vec::new();
     let mut upbeat_ticks: Option<f64> = None;
+    let mut current_time = TimeSignature::COMMON;
+    let mut pending_time: Option<TimeSignature> = None;
     let (mut chord_notes, mut other_voices, mut graces) = (0, 0, 0);
 
     for measure in part.children().filter(|n| n.has_tag_name("measure")) {
@@ -526,13 +529,21 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                     if let Some(t) = child(node, "time") {
                         let found = read_time(t);
                         match (time, found) {
-                            (None, Some(found)) => time = Some(found),
+                            (None, Some(found)) => {
+                                time = Some(found);
+                                current_time = found;
+                            }
                             (None, None) => {
                                 changes.push("The time signature could not be read; using 4/4.".into());
                                 time = Some(TimeSignature::COMMON);
                             }
-                            (Some(old), new) if new != Some(old) => changes.push(format!(
-                                "Bar {bar} changes time signature; the app keeps one, so it stays {old}."
+                            // A later meter starts at the next note.
+                            (Some(_), Some(found)) if found != current_time => {
+                                pending_time = Some(found);
+                                current_time = found;
+                            }
+                            (Some(_), None) => changes.push(format!(
+                                "Bar {bar}: a time signature could not be read; the meter stays {current_time}."
                             )),
                             _ => {}
                         }
@@ -591,6 +602,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                             std::mem::take(&mut pending)
                         },
                         tie_open: ties.contains(&"start"),
+                        time_change: pending_time.take(),
                     });
                     if is_rest {
                         pending.clear();
@@ -627,6 +639,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
             None => BassNote::rest(duration),
         };
         note.duration = duration;
+        note.time_change = entry.time_change;
         let what = entry.pitch.map_or("a rest".to_string(), |p| p.to_string());
         if !exact {
             changes.push(format!(
@@ -986,6 +999,36 @@ mod tests {
         assert!(back.changes.is_empty(), "{:?}", back.changes);
         assert_eq!(back.document.line.upbeat(), line.upbeat());
         assert_eq!(back.document.line.notes().len(), 3);
+    }
+
+    #[test]
+    fn meter_changes_export_and_come_back() {
+        let text = "intavolatura 1\nkey: C major\ntime: 4/4\ninstrument: theorbo-a-14\n\n\
+            C3 1\nD3 2. | | time 3/2\nE3 2. | | time 3/2\nF3 1 | | time 4/4\n";
+        let mut line = document(text);
+        // The second 3/2 is redundant in the file; it is kept as written.
+        let xml = export(&line, None, "t");
+        assert_eq!(
+            xml.matches("<beats>3</beats><beat-type>2</beat-type>")
+                .count(),
+            1
+        );
+        assert_eq!(xml.matches("<time symbol=\"common\">").count(), 2);
+        let back = import(&xml, "P1").unwrap();
+        assert!(back.changes.is_empty(), "{:?}", back.changes);
+        let changes: Vec<Option<String>> = back
+            .document
+            .line
+            .notes()
+            .iter()
+            .map(|n| n.time_change.map(|t| t.to_string()))
+            .collect();
+        assert_eq!(
+            changes,
+            [None, Some("3/2".into()), None, Some("4/4".into())]
+        );
+        line = back.document.line;
+        assert_eq!(line.time(), TimeSignature::COMMON);
     }
 
     #[test]

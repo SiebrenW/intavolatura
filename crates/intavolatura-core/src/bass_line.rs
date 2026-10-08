@@ -18,6 +18,8 @@ pub struct BassNote {
     /// A rest: only the duration counts. The pitch is kept so that turning
     /// it back into a note starts somewhere sensible.
     pub rest: bool,
+    /// A new time signature starting at this note.
+    pub time_change: Option<TimeSignature>,
 }
 
 impl BassNote {
@@ -29,6 +31,7 @@ impl BassNote {
             duration: Duration::QUARTER,
             pin: None,
             rest: false,
+            time_change: None,
         }
     }
 
@@ -174,6 +177,19 @@ impl Editor {
     }
 
     /// Changes the time signature; only the bar lines move.
+    /// Starts a new time signature at a note, or removes one with `None`.
+    /// Choosing the meter already in force there removes the change.
+    pub fn set_time_change(&mut self, index: usize, time: Option<TimeSignature>) -> bool {
+        let before = self.line.notes[..index]
+            .iter()
+            .rev()
+            .find_map(|n| n.time_change)
+            .unwrap_or(self.line.time);
+        let mut note = self.line.notes[index].clone();
+        note.time_change = time.filter(|&t| t != before);
+        self.replace(index, note)
+    }
+
     /// Sets the upbeat: a short first bar of this length, or none.
     pub fn set_upbeat(&mut self, upbeat: Option<Duration>) -> bool {
         if upbeat == self.line.upbeat {
@@ -453,6 +469,27 @@ mod tests {
         editor.undo();
         editor.undo();
         assert_eq!(editor.line().notes()[0].figurings.to_string(), "6");
+    }
+
+    #[test]
+    fn time_changes_are_undoable_and_drop_when_redundant() {
+        let mut editor = editor_with(&["D3", "A2", "B2"]);
+        let triple: TimeSignature = "3/2".parse().unwrap();
+        assert!(editor.set_time_change(1, Some(triple)));
+        assert_eq!(editor.line().notes()[1].time_change, Some(triple));
+        // The meter in force at note 2 is now 3/2: choosing it is no change.
+        assert!(!editor.set_time_change(2, Some(triple)));
+        // Back to 4/4 at note 2 is a change.
+        assert!(editor.set_time_change(2, Some(TimeSignature::COMMON)));
+        editor.undo();
+        editor.undo();
+        assert!(
+            editor
+                .line()
+                .notes()
+                .iter()
+                .all(|n| n.time_change.is_none())
+        );
     }
 
     #[test]

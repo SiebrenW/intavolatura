@@ -170,10 +170,20 @@ fn slice_width(ticks: u32) -> f32 {
 impl Columns {
     /// Columns for notes cut into slices of these lengths in ticks.
     pub fn new(key: Key, notes: &[Vec<u32>]) -> Columns {
+        let notes: Vec<(Vec<u32>, bool)> = notes.iter().map(|n| (n.clone(), false)).collect();
+        Columns::with_meter_changes(key, &notes)
+    }
+
+    /// Columns as [`Columns::new`], where a note that starts a new time
+    /// signature gets room for it before its first slice.
+    pub fn with_meter_changes(key: Key, notes: &[(Vec<u32>, bool)]) -> Columns {
         let mut edges = vec![time_signature_x(key) + TIME_SIGNATURE_WIDTH];
         let mut slices = Vec::new();
-        for lengths in notes {
+        for (lengths, meter_change) in notes {
             let mut left = *edges.last().expect("never empty");
+            if *meter_change {
+                left += TIME_SIGNATURE_WIDTH;
+            }
             let mut lefts = Vec::new();
             for &ticks in lengths {
                 lefts.push(left);
@@ -343,6 +353,13 @@ pub fn scene(
     let timing = timing(line);
     for (index, (note, time)) in line.notes().iter().zip(&timing.notes).enumerate() {
         let x_of = |slice: usize| columns.slice_x(index, slice);
+        if let Some(time) = note.time_change {
+            // A new time signature, drawn before the note on every staff.
+            let x = columns.left(index) + 4.0;
+            for staff in [&staff, &treble, &bass] {
+                staff.draw_time_signature(&mut scene, x, time);
+            }
+        }
         let first_glyph = scene.glyphs.len();
 
         // Bar lines after the slices they follow, through all three rows.
@@ -484,12 +501,16 @@ fn mark_warning(scene: &mut Scene, first: usize, warning: bool) {
 
 /// The columns for a bass line, sized by each note's slices.
 pub fn columns_for(line: &BassLine) -> Columns {
-    let notes: Vec<Vec<u32>> = timing(line)
+    let notes: Vec<(Vec<u32>, bool)> = timing(line)
         .notes
         .iter()
-        .map(|n| n.slices.iter().map(|s| s.duration.ticks()).collect())
+        .zip(line.notes())
+        .map(|(t, n)| {
+            let lengths = t.slices.iter().map(|s| s.duration.ticks()).collect();
+            (lengths, n.time_change.is_some())
+        })
         .collect();
-    Columns::new(line.key(), &notes)
+    Columns::with_meter_changes(line.key(), &notes)
 }
 
 /// Extra room a dot takes after a notehead.

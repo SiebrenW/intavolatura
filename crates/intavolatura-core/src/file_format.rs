@@ -49,11 +49,12 @@ pub fn write(document: &Document) -> String {
     out.push_str(&format!("instrument: {}\n\n", document.instrument.id()));
     for note in document.line.notes() {
         if note.rest {
-            out.push_str(&format!("r {}\n", note.duration));
-            continue;
+            out.push_str(&format!("r {}", note.duration));
+        } else {
+            out.push_str(&format!("{} {}", note.pitch, note.duration));
         }
-        out.push_str(&format!("{} {}", note.pitch, note.duration));
-        if !note.figurings.is_empty() || note.pin.is_some() {
+        let extras = note.pin.is_some() || note.time_change.is_some();
+        if !note.figurings.is_empty() || extras {
             out.push_str(" |");
             if !note.figurings.is_empty() {
                 out.push(' ');
@@ -65,6 +66,9 @@ pub fn write(document: &Document) -> String {
             for (course, fret) in pin.played() {
                 out.push_str(&format!(" {}:{fret}", course + 1));
             }
+        }
+        if let Some(time) = note.time_change {
+            out.push_str(&format!(" | time {time}"));
         }
         out.push('\n');
     }
@@ -128,36 +132,32 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
 fn read_note(line: &str, instrument: &Instrument) -> Result<BassNote, &'static str> {
     let mut parts = line.split('|').map(str::trim);
     let mut head = parts.next().unwrap_or_default().split_whitespace();
-    if let Some(rest) = line
-        .trim()
-        .strip_prefix("r ")
-        .or((line.trim() == "r").then_some(""))
-    {
-        let duration = match rest.trim() {
-            "" => Duration::QUARTER,
-            d => d.parse().map_err(|_| "invalid duration")?,
-        };
-        return Ok(BassNote::rest(duration));
-    }
-    let pitch = head
-        .next()
-        .and_then(|p| p.parse().ok())
-        .ok_or("invalid pitch")?;
-    let mut note = BassNote::new(pitch);
+    let first = head.next().ok_or("invalid pitch")?;
+    let mut note = if first == "r" {
+        BassNote::rest(Duration::QUARTER)
+    } else {
+        BassNote::new(first.parse().map_err(|_| "invalid pitch")?)
+    };
     if let Some(duration) = head.next() {
         note.duration = duration.parse().map_err(|_| "invalid duration")?;
     }
     if head.next().is_some() {
         return Err("expected a pitch and a duration");
     }
-    if let Some(figuring) = parts.next() {
+    if let Some(figuring) = parts.next()
+        && !note.rest
+    {
         note.figurings = figuring.parse().map_err(|_| "invalid figuring")?;
     }
-    if let Some(pin) = parts.next() {
-        note.pin = Some(read_pin(pin, instrument)?);
-    }
-    if parts.next().is_some() {
-        return Err("too many `|` separators");
+    // Then optional sections, each named by its first word.
+    for section in parts {
+        if let Some(time) = section.strip_prefix("time") {
+            note.time_change = Some(time.trim().parse().map_err(|_| "invalid time signature")?);
+        } else if section.starts_with("pin") && !note.rest {
+            note.pin = Some(read_pin(section, instrument)?);
+        } else {
+            return Err("expected `pin` or `time`");
+        }
     }
     Ok(note)
 }
@@ -213,8 +213,8 @@ D3 2
 C#3 4 | 6
 A2 2. | # | pin 1:0 2:0 3:2 6:0
 G2 4 | | pin 4:0 5:0 7:0
-Bb2 8 | 6+ 4-5 3
-r 2
+Bb2 8 | 6+ 4-5 3 | time 3/4
+r 2 | | time 3/2
 ";
 
     #[test]
@@ -225,6 +225,14 @@ r 2
         let notes = doc.line.notes();
         assert_eq!(notes.len(), 6);
         assert!(notes[5].rest && notes[5].duration.to_string() == "2");
+        assert_eq!(
+            notes[4].time_change.map(|t| t.to_string()),
+            Some("3/4".into())
+        );
+        assert_eq!(
+            notes[5].time_change.map(|t| t.to_string()),
+            Some("3/2".into())
+        );
         assert_eq!(notes[1].figurings.to_string(), "6");
         let pin = notes[2].pin.unwrap();
         assert_eq!(
@@ -314,7 +322,11 @@ r 2
                 5,
                 "course pinned twice",
             ),
-            (format!("{header}C3 | | 1:0\n"), 5, "expected `pin`"),
+            (
+                format!("{header}C3 | | 1:0\n"),
+                5,
+                "expected `pin` or `time`",
+            ),
         ];
         for (text, line, message) in cases {
             let error = read(&text).unwrap_err();

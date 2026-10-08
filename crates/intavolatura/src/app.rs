@@ -409,6 +409,13 @@ impl App {
         }
     }
 
+    /// Starts a new time signature at the selected note, or removes it.
+    pub fn set_time_change(&mut self, time: Option<TimeSignature>) {
+        if let Some(i) = self.selected {
+            self.edit(|e| e.set_time_change(i, time));
+        }
+    }
+
     /// Sets the upbeat: a short first bar of this length, or none.
     pub fn set_upbeat(&mut self, upbeat: Option<Duration>) {
         self.edit(|e| e.set_upbeat(upbeat));

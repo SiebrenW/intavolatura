@@ -119,6 +119,9 @@ export component AppWindow inherits Window {
     callback tablature-selected(int);
     callback time-selected(int);
     callback upbeat-selected(int);
+    // A new time signature from the selected note: 0 removes it, then the
+    // time signatures in picker order.
+    callback meter-change-selected(int);
     callback duration-selected(int);
     callback dot-toggled();
     callback figuring-edited(string);
@@ -132,6 +135,10 @@ export component AppWindow inherits Window {
     in property <[string]> import-changes;
     callback import-part(int);
     callback preferences-changed();
+
+    public function choose-meter-change() {
+        meter-change-popup.show();
+    }
 
     public function show-settings() {
         settings.show();
@@ -547,6 +554,49 @@ export component AppWindow inherits Window {
                         edited(value) => {
                             root.preferences-changed();
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    meter-change-popup := PopupWindow {
+        x: 300px;
+        y: 44px;
+        width: 220px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: root.panel;
+            border-width: 1px;
+            border-color: root.panel-border;
+            border-radius: 4px;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 4px;
+
+                Text {
+                    text: "Time signature from this note";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                Button {
+                    text: "No change here";
+                    clicked => {
+                        meter-change-popup.close();
+                        root.meter-change-selected(0);
+                        main.focus();
+                    }
+                }
+
+                for name[i] in root.time-signatures: Button {
+                    text: name;
+                    clicked => {
+                        meter-change-popup.close();
+                        root.meter-change-selected(i + 1);
+                        main.focus();
                     }
                 }
             }
