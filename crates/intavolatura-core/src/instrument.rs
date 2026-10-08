@@ -105,6 +105,21 @@ impl Instrument {
         Instrument::new(id, name, all[..courses].to_vec())
     }
 
+    /// The five-course baroque guitar with bourdons on the 4th and 5th
+    /// courses: the lower octave of each pair sounds the lowest note, so the
+    /// courses are E4 B3 G3 D3 A2 and the bass is always the lowest note.
+    pub fn baroque_guitar() -> Instrument {
+        let course = |open: &str| Course {
+            open: open.parse().expect("valid pitch"),
+            frets: 10,
+        };
+        Instrument::new(
+            "guitar-5",
+            "Baroque guitar (5 courses, bourdons)",
+            ["E4", "B3", "G3", "D3", "A2"].map(course).to_vec(),
+        )
+    }
+
     /// Every built-in instrument, in the order of the picker.
     pub fn all() -> Vec<Instrument> {
         vec![
@@ -112,6 +127,7 @@ impl Instrument {
             Instrument::lute_in_g(6),
             Instrument::lute_in_g(7),
             Instrument::lute_in_g(8),
+            Instrument::baroque_guitar(),
         ]
     }
 

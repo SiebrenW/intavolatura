@@ -48,7 +48,7 @@ pub const BASS_ROW_BOTTOM: f32 = FIGURES_TOP + 4.0 * FIGURE_LINE;
 pub(crate) const TREBLE_STAFF_TOP: f32 = BASS_ROW_BOTTOM + SPACE;
 pub(crate) const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
 
-/// Vertical layout of the tablature: six lines for the fretted courses,
+/// Vertical layout of the tablature: a line for each fretted course (six at most),
 /// diapason signs below.
 /// Room above the tablature for Italian diapason signs (two ledger levels).
 /// and rhythm signs above those.
@@ -341,7 +341,12 @@ pub fn scene(
     bass.draw_key_signature(&mut scene, key, BASS_TOP_POSITION);
     treble.draw_time_signature(&mut scene, time_signature_x(key), line.time());
     bass.draw_time_signature(&mut scene, time_signature_x(key), line.time());
-    for line in 0..6 {
+    let fretted = instrument
+        .courses()
+        .iter()
+        .take_while(|c| !c.is_diapason())
+        .count();
+    for line in 0..fretted {
         scene.bar(
             0.0,
             TAB_TOP + line as f32 * TAB_LINE - LINE / 2.0,
@@ -368,7 +373,12 @@ pub fn scene(
                 let x = columns.slice_edges(index, k).1 - 2.0;
                 scene.vertical(x, staff.top, staff.top + 4.0 * SPACE, BAR_LINE);
                 scene.vertical(x, system.0, system.1, BAR_LINE);
-                scene.vertical(x, TAB_TOP, TAB_BOTTOM, BAR_LINE);
+                scene.vertical(
+                    x,
+                    TAB_TOP,
+                    TAB_TOP + (fretted - 1) as f32 * TAB_LINE,
+                    BAR_LINE,
+                );
             }
         }
 
