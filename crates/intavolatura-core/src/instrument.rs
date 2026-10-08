@@ -105,6 +105,91 @@ impl Instrument {
         Instrument::new(id, name, all[..courses].to_vec())
     }
 
+    /// The theorbo in G: the theorbo in A a tone lower throughout.
+    pub fn theorbo_in_g() -> Instrument {
+        let course = |open: &str, frets| Course {
+            open: open.parse().expect("valid pitch"),
+            frets,
+        };
+        Instrument::new(
+            "theorbo-g-14",
+            "Theorbo in G (14 courses)",
+            vec![
+                course("G3", 11),
+                course("D3", 9),
+                course("A3", 9),
+                course("F3", 9),
+                course("C3", 9),
+                course("G2", 9),
+                course("F2", 0),
+                course("E2", 0),
+                course("D2", 0),
+                course("C2", 0),
+                course("B1", 0),
+                course("A1", 0),
+                course("G1", 0),
+                course("F1", 0),
+            ],
+        )
+    }
+
+    /// The archlute in G: the six fretted courses of the Renaissance lute
+    /// in G and eight diatonic diapasons from F2 down to F1.
+    pub fn archlute_in_g() -> Instrument {
+        let course = |open: &str, frets| Course {
+            open: open.parse().expect("valid pitch"),
+            frets,
+        };
+        Instrument::new(
+            "archlute-g-14",
+            "Archlute in G (14 courses)",
+            vec![
+                course("G4", 8),
+                course("D4", 8),
+                course("A3", 8),
+                course("F3", 8),
+                course("C3", 8),
+                course("G2", 8),
+                course("F2", 0),
+                course("E2", 0),
+                course("D2", 0),
+                course("C2", 0),
+                course("B1", 0),
+                course("A1", 0),
+                course("G1", 0),
+                course("F1", 0),
+            ],
+        )
+    }
+
+    /// The 13-course baroque lute in D minor tuning: F4 D4 A3 F3 D3 A2 on
+    /// the fingerboard and seven diatonic diapasons from G2 down to A1.
+    pub fn baroque_lute() -> Instrument {
+        let course = |open: &str, frets| Course {
+            open: open.parse().expect("valid pitch"),
+            frets,
+        };
+        Instrument::new(
+            "lute-d-13",
+            "Baroque lute in D minor (13 courses)",
+            vec![
+                course("F4", 8),
+                course("D4", 8),
+                course("A3", 8),
+                course("F3", 8),
+                course("D3", 8),
+                course("A2", 8),
+                course("G2", 0),
+                course("F2", 0),
+                course("E2", 0),
+                course("D2", 0),
+                course("C2", 0),
+                course("B1", 0),
+                course("A1", 0),
+            ],
+        )
+    }
+
     /// The five-course baroque guitar with bourdons on the 4th and 5th
     /// courses: the lower octave of each pair sounds the lowest note, so the
     /// courses are E4 B3 G3 D3 A2 and the bass is always the lowest note.
@@ -124,6 +209,9 @@ impl Instrument {
     pub fn all() -> Vec<Instrument> {
         vec![
             Instrument::theorbo_in_a(),
+            Instrument::theorbo_in_g(),
+            Instrument::archlute_in_g(),
+            Instrument::baroque_lute(),
             Instrument::lute_in_g(6),
             Instrument::lute_in_g(7),
             Instrument::lute_in_g(8),
