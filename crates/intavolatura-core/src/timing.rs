@@ -324,14 +324,14 @@ mod tests {
         // The change comes after half a bar: that bar is cut short.
         assert_eq!((t.bars[0].length, t.bars[0].incomplete), (16, true));
         assert!(t.notes[0].warning && !t.notes[1].warning);
+        assert!(t.notes[0].slices[0].bar_line_after);
+        assert_eq!(t.bars[1].time.to_string(), "3/4");
 
         // A note tied into the short bar is flagged too.
         let text = "intavolatura 1\nkey: C major\ntime: 4/4\ninstrument: theorbo-a-14\n\n\
             C3 2.\nD3 2\nE3 2 | | time 3/4\n";
         let t = timing(&file_format::read(text).unwrap().line);
         assert!(!t.notes[0].warning && t.notes[1].warning);
-        assert!(t.notes[0].slices[0].bar_line_after);
-        assert_eq!(t.bars[1].time.to_string(), "3/4");
     }
 
     #[test]
