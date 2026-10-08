@@ -25,6 +25,10 @@ _Avoid_: Pause, empty note
 The single meter of a bass line, such as 4/4, 3/4, 3/2 or 6/8; it decides where bar lines fall.
 _Avoid_: Meter (in code and docs), measure signature
 
+**Upbeat**:
+A short first bar before the first full bar, set with the time signature as a duration (e.g. one quarter in 3/4).
+_Avoid_: Anacrusis, pickup
+
 **Bar**:
 A span of the bass line that fills one time signature; bar lines are placed automatically between bars.
 _Avoid_: Measure

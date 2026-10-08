@@ -37,11 +37,11 @@ Steps:
 17. [ ] **Uneven suspension splits**: a figuring part can carry its own duration, e.g. a dotted quarter then an eighth for 7–6.
 18. [ ] **Triplets** (optional): three notes in the time of two, for proportio/tripla passages.
 
-Open decisions:
-- Upbeat input: a setting "first bar starts after …" in the time signature picker (recommended), or derived from a rest-free first note?
-- Meter change input: a key on the selected note that opens the time signature picker for "from here" (recommended), or a separate marker entry in the bass line?
-- Uneven split syntax: a duration after each part, `7:4.-6:8` (recommended, reuses duration notation), or setting part lengths with the duration keys while a part is selected?
-- Triplets now or later? (Recommended: later, unless your repertoire needs them.)
+Decided:
+- Upbeat: set next to the time signature as a duration; files store `upbeat: 4`.
+- Meter change: `T` on a note opens the time signature picker "from this note on"; drawn before that note; files store it on the note (`| time 3/2`). A change after an incomplete bar marks that bar in the warning colour.
+- Uneven splits: a colon and a duration after a part, `7:4.-6:8`; parts without a length share the rest equally; lengths that do not add up are refused like an invalid figuring.
+- Triplets: later.
 
 ### B. Playback
 
