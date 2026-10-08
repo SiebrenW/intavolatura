@@ -86,8 +86,11 @@ fn bass_events(line: &BassLine) -> Vec<Event<'_>> {
             let figurings = if note.rest || note.figurings.is_empty() {
                 Vec::new()
             } else {
-                let each = ticks / parts.len() as u32;
-                parts.iter().map(|f| (f, each)).collect()
+                let lengths = note
+                    .figurings
+                    .part_ticks(ticks)
+                    .unwrap_or_else(|| vec![ticks / parts.len() as u32; parts.len()]);
+                parts.iter().zip(lengths).collect()
             };
             Event {
                 start: placement.start,
@@ -476,7 +479,8 @@ struct Entry {
     pitch: Option<Pitch>,
     /// In ticks, possibly fractional before fitting.
     ticks: f64,
-    figurings: Vec<String>,
+    /// Each figuring's text and, if given, its length in ticks.
+    figurings: Vec<(String, Option<f64>)>,
     tie_open: bool,
     time_change: Option<TimeSignature>,
 }
@@ -494,7 +498,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
     let (mut key, mut time) = (None, None);
     let mut divisions = 1.0f64;
     let mut voice: Option<String> = None;
-    let mut pending: Vec<String> = Vec::new();
+    let mut pending: Vec<(String, Option<f64>)> = Vec::new();
     let mut entries: Vec<Entry> = Vec::new();
     let mut upbeat_ticks: Option<f64> = None;
     let mut current_time = TimeSignature::COMMON;
@@ -549,7 +553,10 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                         }
                     }
                 }
-                "figured-bass" => pending.push(read_figures(node)),
+                "figured-bass" => {
+                    let (figures, duration) = read_figured_bass(node);
+                    pending.push((figures, duration.map(|d| d * DIVISIONS as f64 / divisions)));
+                }
                 "note" => {
                     if child(node, "grace").is_some() || child(node, "cue").is_some() {
                         graces += 1;
@@ -649,9 +656,35 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
             ));
         }
         if !entry.figurings.is_empty() {
-            let text = entry.figurings.join("-");
+            let text = entry
+                .figurings
+                .iter()
+                .map(|(f, _)| f.as_str())
+                .collect::<Vec<_>>()
+                .join("-");
             match text.parse::<Figurings>() {
-                Ok(figurings) => note.figurings = figurings,
+                Ok(figurings) => {
+                    // Keep the parts' lengths when they are not equal.
+                    let lengths: Vec<Option<Duration>> = entry
+                        .figurings
+                        .iter()
+                        .map(|(_, t)| t.and_then(|t| Duration::from_ticks(t.round() as u32)))
+                        .collect();
+                    let equal = lengths.windows(2).all(|w| w[0] == w[1]);
+                    let all_given = lengths.iter().all(Option::is_some);
+                    let figurings = if !equal && all_given {
+                        figurings.with_lengths(lengths)
+                    } else {
+                        figurings
+                    };
+                    note.figurings = match figurings.part_ticks(note.duration.ticks()) {
+                        Some(_) => figurings,
+                        None => {
+                            let parts = figurings.parts().len();
+                            figurings.with_lengths(vec![None; parts])
+                        }
+                    };
+                }
                 Err(_) => changes.push(format!(
                     "Bar {}: the figures {text:?} under {what} are not supported; left empty.",
                     entry.bar
@@ -708,6 +741,13 @@ fn read_pitch(node: roxmltree::Node<'_, '_>) -> Option<Pitch> {
 }
 
 /// One `<figured-bass>` as figuring text in the app's syntax.
+/// One `<figured-bass>`: its figures in the app's syntax, and how long they
+/// last in divisions, if given.
+fn read_figured_bass(node: roxmltree::Node<'_, '_>) -> (String, Option<f64>) {
+    let duration = child_text(node, "duration").and_then(|d| d.parse().ok());
+    (read_figures(node), duration)
+}
+
 fn read_figures(node: roxmltree::Node<'_, '_>) -> String {
     let sign = |text: &str| match text {
         "sharp" => Some("#"),
@@ -1029,6 +1069,24 @@ mod tests {
         );
         line = back.document.line;
         assert_eq!(line.time(), TimeSignature::COMMON);
+    }
+
+    #[test]
+    fn uneven_suspensions_export_and_come_back() {
+        let text = "intavolatura 1\nkey: C major\ntime: 3/4\ninstrument: theorbo-a-14\n\nC3 2 | 7:4.-6:8\nG2 4 | 4-3\n";
+        let line = document(text);
+        let xml = export(&line, None, "t");
+        assert!(xml.contains("<duration>12</duration>\n      </figured-bass>"));
+        let back = import(&xml, "P1").unwrap();
+        assert!(back.changes.is_empty(), "{:?}", back.changes);
+        let figurings: Vec<String> = back
+            .document
+            .line
+            .notes()
+            .iter()
+            .map(|n| n.figurings.to_string())
+            .collect();
+        assert_eq!(figurings, ["7:4.-6:8", "4-3"]);
     }
 
     #[test]

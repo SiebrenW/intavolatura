@@ -248,6 +248,13 @@ export component ShortcutsPanel inherits Rectangle {
                 muted: root.muted;
             }
 
+            Row {
+                keys: "7:4.-6:8";
+                action: "Uneven parts: a length after a colon (others share the rest)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
             Text {
                 text: "♯ and ♭ raise or lower the note the key gives; ♮ gives the plain letter.";
                 color: root.muted;

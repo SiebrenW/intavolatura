@@ -105,7 +105,8 @@ impl Duration {
             .flatten()
     }
 
-    fn from_ticks(ticks: u32) -> Option<Duration> {
+    /// The plain or dotted note value of exactly this length, if any.
+    pub fn from_ticks(ticks: u32) -> Option<Duration> {
         NoteValue::ALL.into_iter().find_map(|v| {
             [Duration::new(v), Duration::dotted(v)]
                 .into_iter()

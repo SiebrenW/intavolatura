@@ -6,6 +6,8 @@ use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
+use crate::duration::Duration;
+
 /// An accidental written with a figure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FigureAccidental {
@@ -226,27 +228,69 @@ impl FromStr for Figuring {
 }
 
 /// The figurings over one bass note, in the order they sound; more than one
-/// makes a suspension. Never empty.
+/// makes a suspension. Each may carry its own length; the others share
+/// what is left equally. Never empty.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Figurings(Vec<Figuring>);
+pub struct Figurings {
+    parts: Vec<Figuring>,
+    lengths: Vec<Option<Duration>>,
+}
 
 impl Figurings {
     pub fn single(figuring: Figuring) -> Figurings {
-        Figurings(vec![figuring])
+        Figurings {
+            parts: vec![figuring],
+            lengths: vec![None],
+        }
     }
 
     /// The figurings in order; there is always at least one.
     pub fn parts(&self) -> &[Figuring] {
-        &self.0
+        &self.parts
+    }
+
+    /// The length written for each figuring, if any.
+    pub fn lengths(&self) -> &[Option<Duration>] {
+        &self.lengths
     }
 
     pub fn is_suspension(&self) -> bool {
-        self.0.len() > 1
+        self.parts.len() > 1
     }
 
     /// A single empty figuring: a 5/3 chord with nothing written.
     pub fn is_empty(&self) -> bool {
-        matches!(&self.0[..], [only] if only.is_empty())
+        matches!(&self.parts[..], [only] if only.is_empty()) && self.lengths[0].is_none()
+    }
+
+    /// How a note of `total` ticks divides between the figurings: written
+    /// lengths as written, the rest shared equally. `None` if the lengths
+    /// do not fit: too long, not filling the note, or a remainder that does
+    /// not divide into note values.
+    pub fn part_ticks(&self, total: u32) -> Option<Vec<u32>> {
+        let written: u32 = self.lengths.iter().flatten().map(|d| d.ticks()).sum();
+        let open = self.lengths.iter().filter(|l| l.is_none()).count() as u32;
+        let rest = total.checked_sub(written)?;
+        let share = match open {
+            0 if rest == 0 => 0,
+            0 => return None,
+            n if rest % n == 0 && rest > 0 && Duration::from_ticks(rest / n).is_some() => rest / n,
+            _ => return None,
+        };
+        Some(
+            self.lengths
+                .iter()
+                .map(|l| l.map_or(share, |d| d.ticks()))
+                .collect(),
+        )
+    }
+
+    /// The same figurings with these lengths (one per figuring).
+    pub fn with_lengths(mut self, lengths: Vec<Option<Duration>>) -> Figurings {
+        if lengths.len() == self.parts.len() {
+            self.lengths = lengths;
+        }
+        self
     }
 }
 
@@ -257,13 +301,17 @@ impl Default for Figurings {
 }
 
 impl fmt::Display for Figurings {
-    /// Canonical input text: each figuring's canonical form, joined by `-`.
+    /// Canonical input text: each figuring's canonical form with `:length`
+    /// where one is written, joined by `-`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, figuring) in self.0.iter().enumerate() {
+        for (i, (figuring, length)) in self.parts.iter().zip(&self.lengths).enumerate() {
             if i > 0 {
                 f.write_str("-")?;
             }
             write!(f, "{figuring}")?;
+            if let Some(length) = length {
+                write!(f, ":{length}")?;
+            }
         }
         Ok(())
     }
@@ -272,17 +320,30 @@ impl fmt::Display for Figurings {
 impl FromStr for Figurings {
     type Err = ParseFiguringError;
 
-    /// Parses figurings separated by dashes, such as `4-3` or `6 4-5 3`.
+    /// Parses figurings separated by dashes, such as `4-3` or `6 4-5 3`,
+    /// each optionally followed by a length: `7:4.-6:8`.
     fn from_str(s: &str) -> Result<Figurings, ParseFiguringError> {
-        let parts: Vec<&str> = s.split('-').collect();
-        if parts.len() > 1 && parts.iter().any(|p| p.trim().is_empty()) {
+        let texts: Vec<&str> = s.split('-').collect();
+        if texts.len() > 1 && texts.iter().any(|p| p.trim().is_empty()) {
             return Err(ParseFiguringError::EmptyPart);
         }
-        parts
-            .into_iter()
-            .map(str::parse)
-            .collect::<Result<Vec<Figuring>, _>>()
-            .map(Figurings)
+        let mut parts = Vec::new();
+        let mut lengths = Vec::new();
+        for text in texts {
+            let (figures, length) = match text.split_once(':') {
+                Some((figures, length)) => {
+                    let length = length
+                        .trim()
+                        .parse::<Duration>()
+                        .map_err(|_| ParseFiguringError::InvalidLength)?;
+                    (figures, Some(length))
+                }
+                None => (text, None),
+            };
+            parts.push(figures.parse()?);
+            lengths.push(length);
+        }
+        Ok(Figurings { parts, lengths })
     }
 }
 
@@ -369,6 +430,8 @@ pub enum ParseFiguringError {
     UnsupportedFiguring,
     /// Nothing between two dashes, or before or after one.
     EmptyPart,
+    /// A length after `:` that is not a note value.
+    InvalidLength,
 }
 
 impl fmt::Display for ParseFiguringError {
@@ -380,6 +443,7 @@ impl fmt::Display for ParseFiguringError {
             ParseFiguringError::DuplicateInterval(n) => write!(f, "figure {n} written twice"),
             ParseFiguringError::UnsupportedFiguring => f.write_str("unsupported figuring"),
             ParseFiguringError::EmptyPart => f.write_str("empty figuring before or after a dash"),
+            ParseFiguringError::InvalidLength => f.write_str("invalid length after `:`"),
         }
     }
 }
@@ -535,6 +599,28 @@ mod tests {
         assert_eq!(f("4-8 6"), Err(ParseFiguringError::UnsupportedFiguring));
         assert_eq!(f("7 #-6 #").unwrap().to_string(), "7 #-6 #");
         assert_eq!(f("4 - 3").unwrap().to_string(), "4-3");
+    }
+
+    #[test]
+    fn suspension_parts_can_carry_lengths() {
+        let f = |s: &str| s.parse::<Figurings>().unwrap();
+        let ticks = |s: &str, total: u32| f(s).part_ticks(total);
+        // Over a half note (16 ticks).
+        assert_eq!(ticks("7-6", 16), Some(vec![8, 8]));
+        assert_eq!(ticks("7:4.-6:8", 16), Some(vec![12, 4]));
+        assert_eq!(ticks("7:4.-6", 16), Some(vec![12, 4]));
+        assert_eq!(ticks("6 4:4-5 3:8-#:8", 16), Some(vec![8, 4, 4]));
+        assert_eq!(ticks("6 4:4-5 3-#", 16), Some(vec![8, 4, 4]));
+        // Too long, not filling, or not dividing.
+        assert_eq!(ticks("7:2-6", 16), None);
+        assert_eq!(ticks("7:4-6:8", 16), None);
+        assert_eq!(ticks("7:16-6-5", 16), None);
+        assert_eq!(f("7:4.-6:8").to_string(), "7:4.-6:8");
+        assert_eq!(f("7 :4. - 6").to_string(), "7:4.-6");
+        assert_eq!(
+            "7:3-6".parse::<Figurings>(),
+            Err(ParseFiguringError::InvalidLength)
+        );
     }
 
     #[test]

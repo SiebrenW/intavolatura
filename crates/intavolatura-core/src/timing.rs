@@ -124,7 +124,11 @@ pub fn timing(line: &BassLine) -> Timing {
         let start = position;
         let ticks = note.duration.ticks();
         let mut slices = Vec::new();
-        let parts = part_lengths(ticks, note.figurings.parts().len());
+        // Written part lengths if they fit the note, else equal parts.
+        let parts = note
+            .figurings
+            .part_ticks(ticks)
+            .unwrap_or_else(|| part_lengths(ticks, note.figurings.parts().len()));
         for (part, part_ticks) in parts.into_iter().enumerate() {
             let mut remaining = part_ticks;
             let mut struck = true;
@@ -332,6 +336,17 @@ mod tests {
             C3 2.\nD3 2\nE3 2 | | time 3/4\n";
         let t = timing(&file_format::read(text).unwrap().line);
         assert!(!t.notes[0].warning && t.notes[1].warning);
+    }
+
+    #[test]
+    fn uneven_suspension_parts_follow_their_lengths() {
+        let t = timing(&line("C3 2 | 7:4.-6:8\n", "4/4"));
+        let parts: Vec<(usize, String)> = t.notes[0]
+            .slices
+            .iter()
+            .map(|s| (s.part, s.duration.to_string()))
+            .collect();
+        assert_eq!(parts, [(0, "4.".into()), (1, "8".into())]);
     }
 
     #[test]

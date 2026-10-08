@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use intavolatura_core::{Duration, Figurings, Key, Mode, NoteValue, TimeSignature};
+use intavolatura_core::{Duration, Key, Mode, NoteValue, TimeSignature};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use slint::platform::Key as SlintKey;
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel, Weak};
@@ -231,10 +231,10 @@ pub fn wire(window: &AppWindow, app: App) {
         save_file(&s, false);
     });
 
-    let weak = window.as_weak();
+    let s = shared.clone();
     window.on_figuring_edited(move |text| {
-        weak.unwrap()
-            .set_figuring_error(text.parse::<Figurings>().is_err());
+        let fits = s.app.borrow().figuring_text_fits(&text);
+        s.window.unwrap().set_figuring_error(!fits);
     });
 
     let s = shared.clone();

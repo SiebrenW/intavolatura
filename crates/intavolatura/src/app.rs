@@ -384,10 +384,24 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// Applies typed figuring text; on invalid text keeps editing and
-    /// returns false.
+    /// The figurings typed for the selected note, if they are valid and
+    /// their lengths fit the note.
+    fn figurings_for_selected(&self, text: &str) -> Option<(usize, Figurings)> {
+        let i = self.selected?;
+        let figurings = text.parse::<Figurings>().ok()?;
+        let ticks = self.line().notes()[i].duration.ticks();
+        figurings.part_ticks(ticks).map(|_| (i, figurings))
+    }
+
+    /// Whether typed figuring text would be accepted for the selected note.
+    pub fn figuring_text_fits(&self, text: &str) -> bool {
+        self.figurings_for_selected(text).is_some()
+    }
+
+    /// Applies typed figuring text; on invalid text (or lengths that do not
+    /// fit the note) keeps editing and returns false.
     pub fn accept_figuring(&mut self, text: &str) -> bool {
-        let (Some(i), Ok(figurings)) = (self.selected, text.parse::<Figurings>()) else {
+        let Some((i, figurings)) = self.figurings_for_selected(text) else {
             return false;
         };
         self.edit(|e| e.set_figurings(i, figurings));
@@ -556,6 +570,19 @@ mod tests {
         assert!(!app.editing);
         app.key(Input::Char('r'), false, false);
         assert!(!app.line().notes()[0].rest);
+    }
+
+    #[test]
+    fn part_lengths_must_fit_the_note() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(19));
+        app.key(Input::Char('6'), false, false); // a half note
+        app.key(Input::Enter, false, false);
+        assert!(app.figuring_text_fits("7:4.-6:8"));
+        assert!(!app.figuring_text_fits("7:2-6"));
+        assert!(!app.accept_figuring("7:2-6"));
+        assert!(app.accept_figuring("7:4.-6"));
+        assert_eq!(app.line().notes()[0].figurings.to_string(), "7:4.-6");
     }
 
     #[test]
