@@ -28,7 +28,7 @@ const TIME_SIGNATURE_WIDTH: f32 = 30.0;
 const MIN_PART_WIDTH: f32 = 0.85 * COLUMN_WIDTH;
 const STEM: f32 = 3.5 * SPACE;
 const STEM_WIDTH: f32 = 1.2;
-const BAR_LINE: f32 = 1.4;
+pub(crate) const BAR_LINE: f32 = 1.4;
 
 /// Staff position (see `Pitch::staff_position`) of each staff's top line.
 const BASS_TOP_POSITION: i16 = 26; // A3
@@ -45,15 +45,15 @@ const FIGURE_LINE: f32 = 26.0;
 pub const BASS_ROW_BOTTOM: f32 = FIGURES_TOP + 4.0 * FIGURE_LINE;
 
 /// Vertical layout of the voicing grand staff.
-const TREBLE_STAFF_TOP: f32 = BASS_ROW_BOTTOM + SPACE;
-const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
+pub(crate) const TREBLE_STAFF_TOP: f32 = BASS_ROW_BOTTOM + SPACE;
+pub(crate) const VOICING_BASS_TOP: f32 = TREBLE_STAFF_TOP + 11.0 * SPACE;
 
 /// Vertical layout of the tablature: six lines for the fretted courses,
 /// diapason signs below.
 /// Room above the tablature for Italian diapason signs (two ledger levels).
 /// and rhythm signs above those.
-const TAB_TOP: f32 = VOICING_BASS_TOP + 9.0 * SPACE + 6.0 * TAB_LINE;
-const TAB_LINE: f32 = 16.0;
+pub(crate) const TAB_TOP: f32 = VOICING_BASS_TOP + 9.0 * SPACE + 6.0 * TAB_LINE;
+pub(crate) const TAB_LINE: f32 = 16.0;
 /// Size of the historical tablature signs, a little under Bravura's four
 /// staff spaces per em with a tablature line gap as the space.
 const TAB_MUSIC_SIZE: f32 = 2.4 * TAB_LINE;
@@ -80,7 +80,7 @@ impl Default for Signs {
         }
     }
 }
-const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
+pub(crate) const TAB_BOTTOM: f32 = TAB_TOP + 5.0 * TAB_LINE;
 pub const CONTENT_BOTTOM: f32 = TAB_BOTTOM + 4.0 * TAB_LINE;
 
 /// Something drawn as text, centred on `(x, y)`.
@@ -121,7 +121,7 @@ pub struct Tie {
 
 impl Tie {
     /// A tie curving down from `x1` to `x2`, hanging below `y`.
-    fn below(x1: f32, x2: f32, y: f32) -> Tie {
+    pub(crate) fn below(x1: f32, x2: f32, y: f32) -> Tie {
         let (width, height) = (x2 - x1, 0.6 * SPACE);
         let w = width;
         let (h, inner) = (height, height - 1.6);
@@ -271,7 +271,7 @@ pub enum ColumnHit {
 }
 
 /// Where the time signature starts, after the key signature.
-fn time_signature_x(key: Key) -> f32 {
+pub(crate) fn time_signature_x(key: Key) -> f32 {
     KEY_SIGNATURE_X + key.signature().unsigned_abs() as f32 * KEY_SIGNATURE_STEP + 8.0
 }
 

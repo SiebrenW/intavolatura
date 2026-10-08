@@ -84,6 +84,9 @@ _Avoid_: Chord staff, realization staff
 **Column**:
 One bass note together with everything shown for it in every view; the unit of selection and navigation.
 
+**System**:
+One line of the score on a printed page: the staves of every printed row from a bar line to a bar line, with the clefs and key signature repeated at its start.
+
 ### Instruments
 
 **Instrument**:

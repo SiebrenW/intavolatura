@@ -13,6 +13,7 @@ use intavolatura_core::musicxml::{self, PartInfo};
 
 use crate::app::{App, Input};
 use crate::preferences::{Preferences, Theme};
+use crate::print::{Contents, PageSize};
 use crate::view::{self, TablatureStyle};
 use crate::{AppWindow, Bar, Glyph, Tie};
 
@@ -207,6 +208,15 @@ pub fn wire(window: &AppWindow, app: App) {
                 sign_size: window.get_sign_size().clamp(50, 150) as u8,
                 italian_on_line: window.get_italian_on_line(),
                 french_on_line: window.get_french_on_line(),
+                print_contents: usize::try_from(window.get_print_contents())
+                    .ok()
+                    .and_then(|i| Contents::ALL.get(i).copied())
+                    .unwrap_or_default(),
+                page_size: usize::try_from(window.get_page_size())
+                    .ok()
+                    .and_then(|i| PageSize::ALL.get(i).copied())
+                    .unwrap_or_default(),
+                staff_mm: window.get_staff_mm().clamp(5, 12) as u8,
                 ..app.preferences()
             };
             apply_preferences(app, &preferences);
@@ -222,6 +232,9 @@ pub fn wire(window: &AppWindow, app: App) {
     window.on_export_file(move |with_realization| {
         export_file(&s, with_realization);
     });
+
+    let s = shared.clone();
+    window.on_export_pdf(move || export_pdf(&s));
 
     let s = shared.clone();
     window.on_import_part(move |index| import_part(&s, index as usize));
@@ -478,6 +491,27 @@ fn export_file(s: &Shared, with_realization: bool) {
     }
 }
 
+/// Asks where to write the PDF, then exports.
+fn export_pdf(s: &Shared) {
+    let current = s.app.borrow().path.clone();
+    let name = current
+        .as_deref()
+        .and_then(|p| p.file_stem())
+        .map_or("Untitled".into(), |n| n.to_string_lossy().into_owned());
+    let mut dialog = FileDialog::new()
+        .add_filter("PDF", &["pdf"])
+        .set_file_name(format!("{name}.pdf"));
+    if let Some(dir) = current.as_deref().and_then(|p| p.parent()) {
+        dialog = dialog.set_directory(dir);
+    }
+    if let Some(mut path) = dialog.save_file() {
+        if path.extension().is_none() {
+            path.set_extension("pdf");
+        }
+        s.update(|_, app| app.export_pdf(&path));
+    }
+}
+
 /// Translates Slint's key text into the app's inputs.
 fn input(text: &str) -> Option<Input> {
     let is = |key: SlintKey| text == SharedString::from(key).as_str();
@@ -569,6 +603,19 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     window.set_sign_size(preferences.sign_size.into());
     window.set_italian_on_line(preferences.italian_on_line);
     window.set_french_on_line(preferences.french_on_line);
+    window.set_print_contents(
+        Contents::ALL
+            .iter()
+            .position(|&c| c == preferences.print_contents)
+            .unwrap_or(0) as i32,
+    );
+    window.set_page_size(
+        PageSize::ALL
+            .iter()
+            .position(|&p| p == preferences.page_size)
+            .unwrap_or(0) as i32,
+    );
+    window.set_staff_mm(preferences.staff_mm.into());
 
     let time = app.line().time();
     window.set_time_index(

@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod preferences;
+pub mod print;
 pub mod ui;
 pub mod view;
 

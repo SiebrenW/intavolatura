@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use intavolatura_core::Settings;
 
+use crate::print::{Contents, PageSize};
 use crate::view::{Signs, TablatureStyle};
 
 /// Light or dark colours for the window and the score.
@@ -44,8 +45,13 @@ pub struct Preferences {
     pub italian_on_line: bool,
     /// French signs rest on the line rather than centred on it.
     pub french_on_line: bool,
+    /// What a PDF contains, its page size, and the height of a staff.
+    pub print_contents: Contents,
+    pub page_size: PageSize,
+    pub staff_mm: u8,
 }
 
+pub const STAFF_MM: std::ops::RangeInclusive<u8> = 5..=12;
 pub const SIGN_SIZES: std::ops::RangeInclusive<u8> = 50..=150;
 
 impl Default for Preferences {
@@ -61,6 +67,9 @@ impl Default for Preferences {
             sign_size: 100,
             italian_on_line: false,
             french_on_line: true,
+            print_contents: Contents::default(),
+            page_size: PageSize::default(),
+            staff_mm: 7,
         }
     }
 }
@@ -117,6 +126,24 @@ impl Preferences {
                 }
                 "italian_on_line" => p.italian_on_line = value.parse().unwrap_or(p.italian_on_line),
                 "french_on_line" => p.french_on_line = value.parse().unwrap_or(p.french_on_line),
+                "print_contents" => match value {
+                    "tablature" => p.print_contents = Contents::Tablature,
+                    "bass" => p.print_contents = Contents::WithBass,
+                    "all" => p.print_contents = Contents::All,
+                    _ => {}
+                },
+                "page_size" => match value {
+                    "a4" => p.page_size = PageSize::A4,
+                    "letter" => p.page_size = PageSize::Letter,
+                    _ => {}
+                },
+                "staff_mm" => {
+                    if let Ok(n) = value.parse::<u8>()
+                        && STAFF_MM.contains(&n)
+                    {
+                        p.staff_mm = n;
+                    }
+                }
                 "candidates_to_cycle" => {
                     if let Ok(n) = value.parse::<usize>()
                         && CANDIDATES.contains(&n)
@@ -145,6 +172,22 @@ impl Preferences {
             format!("sign_size = {}", self.sign_size),
             format!("italian_on_line = {}", self.italian_on_line),
             format!("french_on_line = {}", self.french_on_line),
+            format!(
+                "print_contents = {}",
+                match self.print_contents {
+                    Contents::Tablature => "tablature",
+                    Contents::WithBass => "bass",
+                    Contents::All => "all",
+                }
+            ),
+            format!(
+                "page_size = {}",
+                match self.page_size {
+                    PageSize::A4 => "a4",
+                    PageSize::Letter => "letter",
+                }
+            ),
+            format!("staff_mm = {}", self.staff_mm),
         ]
         .map(|line| line + "\n")
         .concat()
@@ -208,13 +251,16 @@ mod tests {
             sign_size: 80,
             italian_on_line: true,
             french_on_line: false,
+            print_contents: Contents::All,
+            page_size: PageSize::Letter,
+            staff_mm: 9,
         };
         assert_eq!(Preferences::parse(&p.to_text()), p);
     }
 
     #[test]
     fn bad_lines_keep_defaults() {
-        let text = "theme = purple\nsign_size = 300\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
+        let text = "theme = purple\nstaff_mm = 99\npage_size = a0\nsign_size = 300\nfret_span = 40\ncandidates_to_cycle = x\nshow_hints = maybe\nnonsense\ncolour = red\n";
         assert_eq!(Preferences::parse(text), Preferences::default());
     }
 

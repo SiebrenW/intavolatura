@@ -10,6 +10,7 @@ use intavolatura_core::{
 };
 
 use crate::preferences::{Preferences, Theme};
+use crate::print::{self, Contents, PageSize, PrintOptions};
 use crate::view::{self, ColumnHit, Columns, TablatureStyle, ViewOptions};
 
 /// Keys the app reacts to, decoupled from the toolkit's key codes.
@@ -42,6 +43,7 @@ pub struct App {
     sign_size: u8,
     italian_on_line: bool,
     french_on_line: bool,
+    print: (Contents, PageSize, u8),
     /// The realization of each note, and the note and key it was made for.
     realizations: Vec<(BassNote, Key, Realization)>,
     pub selected: Option<usize>,
@@ -72,6 +74,10 @@ impl App {
             sign_size: Preferences::default().sign_size,
             italian_on_line: Preferences::default().italian_on_line,
             french_on_line: Preferences::default().french_on_line,
+            print: {
+                let d = Preferences::default();
+                (d.print_contents, d.page_size, d.staff_mm)
+            },
             realizations: Vec::new(),
             editing: false,
             saved: BassLine::new(key),
@@ -145,6 +151,31 @@ impl App {
         };
     }
 
+    /// Writes the score as a PDF with the print preferences.
+    pub fn export_pdf(&mut self, path: &Path) {
+        let (contents, page_size, staff_mm) = self.print;
+        let title = self
+            .path
+            .as_deref()
+            .or(Some(path))
+            .and_then(Path::file_stem)
+            .map_or("Untitled".into(), |s| s.to_string_lossy().into_owned());
+        let options = PrintOptions {
+            contents,
+            page_size,
+            // A staff is four spaces high; a point is 1/72 inch.
+            staff_size: staff_mm as f32 / 4.0 * 72.0 / 25.4,
+            title,
+        };
+        let pages = print::layout(self.line(), &self.scene(), &options);
+        let written = print::write(&pages, options.page_size, &options.title)
+            .and_then(|pdf| std::fs::write(path, pdf).map_err(|e| e.to_string()));
+        self.status = match written {
+            Ok(()) => format!("Exported {}", path.display()),
+            Err(e) => format!("Could not export {}: {e}", path.display()),
+        };
+    }
+
     /// Whether the bass line differs from the file it was opened from or
     /// last saved to.
     pub fn is_modified(&self) -> bool {
@@ -173,6 +204,9 @@ impl App {
             sign_size: self.sign_size,
             italian_on_line: self.italian_on_line,
             french_on_line: self.french_on_line,
+            print_contents: self.print.0,
+            page_size: self.print.1,
+            staff_mm: self.print.2,
         }
     }
 
@@ -183,6 +217,11 @@ impl App {
         self.sign_size = preferences.sign_size;
         self.italian_on_line = preferences.italian_on_line;
         self.french_on_line = preferences.french_on_line;
+        self.print = (
+            preferences.print_contents,
+            preferences.page_size,
+            preferences.staff_mm,
+        );
         self.tablature = preferences.tablature;
         self.show_hints = preferences.show_hints;
         let settings = preferences.settings();

@@ -111,6 +111,12 @@ export component AppWindow inherits Window {
     in-out property <bool> italian-on-line;
     in-out property <bool> french-on-line;
 
+    // PDF export: contents, page size and staff height in mm.
+    in-out property <int> print-contents;
+    in-out property <int> page-size;
+    in-out property <int> staff-mm;
+    callback export-pdf();
+
     // A click in content coordinates.
     callback clicked(length, length);
     // A key press: text, shift, control (command on macOS). Returns whether handled.
@@ -138,6 +144,10 @@ export component AppWindow inherits Window {
 
     public function choose-meter-change() {
         meter-change-popup.show();
+    }
+
+    public function show-export() {
+        export.show();
     }
 
     public function show-settings() {
@@ -733,6 +743,79 @@ export component AppWindow inherits Window {
 
                 Text {
                     text: "Opens in MuseScore, Dorico, Sibelius and other notation programs. Tablature is not included.";
+                    wrap: word-wrap;
+                    color: root.muted;
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: root.panel-border;
+                }
+
+                Text {
+                    text: "Export as PDF";
+                    font-weight: 600;
+                    color: root.ink;
+                }
+
+                ComboBox {
+                    model: ["Tablature", "Figured bass and tablature", "Figured bass, realization and tablature"];
+                    current-index <=> root.print-contents;
+                    selected => {
+                        root.preferences-changed();
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Page";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    ComboBox {
+                        width: 110px;
+                        model: ["A4", "Letter"];
+                        current-index <=> root.page-size;
+                        selected => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: "Staff height (mm)";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    SpinBox {
+                        width: 90px;
+                        minimum: 5;
+                        maximum: 12;
+                        value <=> root.staff-mm;
+                        edited(value) => {
+                            root.preferences-changed();
+                        }
+                    }
+                }
+
+                Button {
+                    text: "Save PDF…";
+                    clicked => {
+                        export.close();
+                        root.export-pdf();
+                        main.focus();
+                    }
+                }
+
+                Text {
+                    text: "Tablature style, sign size and placement follow the settings.";
                     wrap: word-wrap;
                     color: root.muted;
                 }

@@ -83,14 +83,11 @@ Open decisions:
 Goal: a printable score to play from.
 
 Steps:
-27. [ ] **System layout**: break the line into systems at bar lines to fit the page width, repeat clefs, key signature and tablature start on every system; page breaks between systems; title and page numbers.
-28. [ ] **PDF writer**: draw the existing display list (glyphs, lines, ties) as vector PDF with Bravura embedded (subset), using `pdf-writer` and `ttf-parser`/`subsetter`; no raster images, small files, sharp at any zoom.
-29. [ ] **Export dialog**: what to print (tablature only; tablature with the bass staff; all three rows), page size (A4/Letter), staff size, title and composer.
+27. [x] **System layout**: break the line into systems at bar lines to fit the page width, repeat clefs, key signature and tablature start on every system; page breaks between systems; title and page numbers.
+28. [x] **PDF writer**: draw the existing display list (glyphs, lines, ties) as vector PDF with Bravura embedded (subset), using `pdf-writer` and `ttf-parser`/`subsetter`; no raster images, small files, sharp at any zoom.
+29. [x] **Export dialog**: what to print (tablature only; tablature with the bass staff; all three rows), page size (A4/Letter), staff height, kept in the preferences. The title is the file name; a composer line waits until files carry metadata.
 
-Open decisions:
-- Default contents: tablature with the figured bass staff above it (recommended: what a player reads from), tablature only, or all three rows?
-- Page size default: A4 (recommended) or Letter?
-- Should printing honour the screen settings (tablature style, sign size, placement), recommended, or have its own?
+Decided: tablature with the figured bass staff above it by default; A4 by default; printing follows the screen settings for tablature style, sign size and placement. Systems break at bar lines (after any note if a bar is too long for a line), later systems repeat clefs and key signature but not the time signature, lines are stretched up to 35% to fill the width, and ties across a break are drawn as two half ties.
 
 Risks: font embedding and glyph mapping need care; checked by opening output in a PDF viewer and comparing to the screen render.
 
@@ -138,6 +135,7 @@ Risks: font embedding and glyph mapping need care; checked by opening output in 
   - [x] A pin that is not a valid fingering for its chord (e.g. after changing settings) is ignored, not an error
   - [x] MusicXML export (Export button): the figured bass part, and optionally the realization on a grand staff (held notes tied, filler rests hidden); notes over a bar line are split and tied; no tablature. Check with `cargo run --example to_musicxml -- <in.intav> <out.musicxml>`
   - [x] MusicXML import through Open (.musicxml, .xml, .mxl): choose the part; ties joined, lowest note of chords, voice 1 only, unsupported durations rounded, first time signature only, unsupported figures left empty; a summary lists every change. Check with `cargo run --example from_musicxml -- <file> [part]`. Round trip through MuseScore 4 (export → .mxl → import) gives back the same bass line
+  - [x] PDF export (Export popup → Save PDF…): tablature, figured bass with tablature, or all rows; A4 or Letter; staff height in mm; vector output with a Bravura subset (about 10–15 KB for three systems), systems broken at bar lines, page numbers. Check with `cargo run -p intavolatura --example pdf -- <in.intav> <out.pdf> [tab|bass|all]`
 
 ## Later
 
