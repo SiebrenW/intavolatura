@@ -839,8 +839,8 @@ export component AppWindow inherits Window {
                 Button {
                     text: "No change here";
                     clicked => {
-                        meter-change-popup.close();
                         root.meter-change-selected(0);
+                        meter-change-popup.close();
                         main.focus();
                     }
                 }
@@ -848,8 +848,8 @@ export component AppWindow inherits Window {
                 for name[i] in root.time-signatures: Button {
                     text: name;
                     clicked => {
-                        meter-change-popup.close();
                         root.meter-change-selected(i + 1);
+                        meter-change-popup.close();
                         main.focus();
                     }
                 }
@@ -888,8 +888,8 @@ export component AppWindow inherits Window {
                 for name[i] in root.import-parts: Button {
                     text: name;
                     clicked => {
-                        import-parts-popup.close();
                         root.import-part(i);
+                        import-parts-popup.close();
                         main.focus();
                     }
                 }
