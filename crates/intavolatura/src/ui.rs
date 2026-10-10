@@ -453,8 +453,19 @@ fn open_file(s: &Shared) -> bool {
                     })
                     .collect();
                 window.set_import_parts(ModelRc::new(VecModel::from(names)));
+                let file = path
+                    .file_name()
+                    .map_or(String::new(), |n| n.to_string_lossy().into_owned());
                 *s.import.borrow_mut() = Some((score, path, parts));
-                window.invoke_choose_import_part();
+                s.update(|_, app| app.status = format!("Choose a part of {file} to import"));
+                // Shown after the file dialog's click has been dealt with,
+                // or the window can close the popup again at once.
+                let weak = s.window.clone();
+                slint::Timer::single_shot(std::time::Duration::from_millis(150), move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.invoke_choose_import_part();
+                    }
+                });
             }
             Err(e) => {
                 s.update(|_, app| app.status = format!("Could not read {}: {e}", path.display()))

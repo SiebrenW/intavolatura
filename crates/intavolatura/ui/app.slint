@@ -861,7 +861,7 @@ export component AppWindow inherits Window {
         x: 60px;
         y: 44px;
         width: 360px;
-        close-policy: close-on-click-outside;
+        close-policy: no-auto-close;
 
         Rectangle {
             background: root.panel;
@@ -890,6 +890,14 @@ export component AppWindow inherits Window {
                     clicked => {
                         import-parts-popup.close();
                         root.import-part(i);
+                        main.focus();
+                    }
+                }
+
+                Button {
+                    text: "Cancel";
+                    clicked => {
+                        import-parts-popup.close();
                         main.focus();
                     }
                 }
