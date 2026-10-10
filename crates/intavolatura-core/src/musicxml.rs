@@ -4,9 +4,10 @@
 //! and, optionally, the realization as a second part on a grand staff.
 //! Durations use 8 divisions per quarter, so ticks are written unchanged.
 //!
-//! Import reads one part of a score as a bass line with its figures, and
-//! reports everything it had to change to fit the app's model.
+//! Import reads the lowest sounding note of one part, or of all parts, as a
+//! bass line with its figures, and reports everything it had to change to fit the app's model.
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::Read;
 use std::path::Path;
@@ -455,7 +456,7 @@ pub fn parts(xml: &str) -> Result<Vec<PartInfo>, String> {
             (id, name)
         })
         .collect();
-    Ok(names
+    let mut found: Vec<PartInfo> = names
         .into_iter()
         .map(|(id, name)| {
             let part = root
@@ -463,6 +464,8 @@ pub fn parts(xml: &str) -> Result<Vec<PartInfo>, String> {
                 .find(|n| n.has_tag_name("part") && n.attribute("id") == Some(id.as_str()));
             let has_figures =
                 part.is_some_and(|p| p.descendants().any(|n| n.has_tag_name("figured-bass")));
+            // Names can span lines, with a range under the voice.
+            let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
             let name = if name.is_empty() { id.clone() } else { name };
             PartInfo {
                 id,
@@ -470,59 +473,116 @@ pub fn parts(xml: &str) -> Result<Vec<PartInfo>, String> {
                 has_figures,
             }
         })
-        .collect())
+        .collect();
+    if found.len() > 1 {
+        found.push(PartInfo {
+            id: ALL_PARTS.into(),
+            name: "All parts, lowest note".into(),
+            has_figures: false,
+        });
+    }
+    Ok(found)
 }
 
-/// One entry read from the part, before durations are fitted.
-struct Entry {
-    bar: String,
-    pitch: Option<Pitch>,
-    /// In ticks, possibly fractional before fitting.
+/// The id that asks [`import`] for the lowest sounding note of every part.
+pub const ALL_PARTS: &str = "*";
+
+/// A moment in a score: ticks into a measure.
+#[derive(Clone, Copy)]
+struct At {
+    measure: usize,
     ticks: f64,
+}
+
+/// A pitched note as read, with ties already joined.
+struct Sounding {
+    start: At,
+    end: At,
+    pitch: Pitch,
+}
+
+/// One `<figured-bass>` as read.
+struct Figure {
+    at: At,
+    text: String,
+    ticks: Option<f64>,
+}
+
+/// What one part says, before parts are combined and durations fitted.
+#[derive(Default)]
+struct PartRead {
+    /// Each measure's length in ticks, and its printed number.
+    lengths: Vec<f64>,
+    numbers: Vec<String>,
+    implicit_first: bool,
+    sounding: Vec<Sounding>,
+    figures: Vec<Figure>,
+    key: Option<Key>,
+    time: Option<TimeSignature>,
+    /// Later meters, from the measure that starts them.
+    time_changes: Vec<(usize, TimeSignature)>,
+    graces: usize,
+}
+
+/// A note on the grid of sixteenths, in absolute ticks.
+struct Span {
+    start: i64,
+    end: i64,
+    pitch: Pitch,
+    /// Whether its start and end were on the grid before rounding.
+    exact: bool,
+}
+
+/// The bass at some stretch of time, taken from one `Span`.
+struct Entry {
+    start: i64,
+    end: i64,
+    note: usize,
     /// Each figuring's text and, if given, its length in ticks.
     figurings: Vec<(String, Option<f64>)>,
-    tie_open: bool,
-    time_change: Option<TimeSignature>,
 }
 
-/// Reads part `id` of a score as a bass line on the theorbo.
-pub fn import(xml: &str, id: &str) -> Result<Import, String> {
-    let doc = parse(xml)?;
-    let part = doc
-        .root_element()
-        .children()
-        .find(|n| n.has_tag_name("part") && n.attribute("id") == Some(id))
-        .ok_or_else(|| format!("no part {id}"))?;
+fn ticks_of(duration: f64, divisions: f64) -> f64 {
+    duration * DIVISIONS as f64 / divisions
+}
 
-    let mut changes = Vec::new();
-    let (mut key, mut time) = (None, None);
+fn read_part(part: roxmltree::Node<'_, '_>, changes: &mut Vec<String>) -> PartRead {
+    let mut read = PartRead::default();
     let mut divisions = 1.0f64;
-    let mut voice: Option<String> = None;
-    let mut pending: Vec<(String, Option<f64>)> = Vec::new();
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut upbeat_ticks: Option<f64> = None;
+    let mut octave_shift = 0i8;
     let mut current_time = TimeSignature::COMMON;
-    let mut pending_time: Option<TimeSignature> = None;
-    let (mut chord_notes, mut other_voices, mut graces) = (0, 0, 0);
+    // Notes waiting for the end of a tie, by voice and pitch.
+    let mut open: HashMap<(String, i16), usize> = HashMap::new();
 
-    for measure in part.children().filter(|n| n.has_tag_name("measure")) {
+    for (m, measure) in part
+        .children()
+        .filter(|n| n.has_tag_name("measure"))
+        .enumerate()
+    {
         let bar = measure.attribute("number").unwrap_or("?").to_string();
-        // An implicit first measure is an upbeat; its length is summed below.
-        let in_upbeat = measure.attribute("implicit") == Some("yes") && entries.is_empty();
-        let upbeat_from = entries.len();
+        if m == 0 {
+            read.implicit_first = measure.attribute("implicit") == Some("yes");
+        }
+        let (mut pos, mut high, mut last_start) = (0.0f64, 0.0f64, 0.0f64);
         for node in measure.children().filter(|n| n.is_element()) {
             match node.tag_name().name() {
                 "attributes" => {
                     if let Some(d) = child_text(node, "divisions").and_then(|t| t.parse().ok()) {
                         divisions = d;
                     }
+                    if let Some(shift) = child(node, "transpose")
+                        .and_then(|t| child_text(t, "octave-change"))
+                        .and_then(|t| t.parse().ok())
+                    {
+                        octave_shift = shift;
+                    }
                     if let Some(k) = child(node, "key") {
                         let found = read_key(k);
-                        match (key, found) {
-                            (None, Some(found)) => key = Some(found),
+                        match (read.key, found) {
+                            (None, Some(found)) => read.key = Some(found),
                             (None, None) => {
                                 changes.push("The key could not be read; using C major.".into());
-                                key = Some("C major".parse().expect("valid key"));
+                                read.key = Some("C major".parse().expect("valid key"));
                             }
                             (Some(old), new) if new != Some(old) => changes.push(format!(
                                 "Bar {bar} changes key; the app keeps one key, so it stays {old}."
@@ -532,18 +592,18 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                     }
                     if let Some(t) = child(node, "time") {
                         let found = read_time(t);
-                        match (time, found) {
+                        match (read.time, found) {
                             (None, Some(found)) => {
-                                time = Some(found);
+                                read.time = Some(found);
                                 current_time = found;
                             }
                             (None, None) => {
                                 changes.push("The time signature could not be read; using 4/4.".into());
-                                time = Some(TimeSignature::COMMON);
+                                read.time = Some(TimeSignature::COMMON);
                             }
-                            // A later meter starts at the next note.
+                            // A later meter starts with its measure.
                             (Some(_), Some(found)) if found != current_time => {
-                                pending_time = Some(found);
+                                read.time_changes.push((m, found));
                                 current_time = found;
                             }
                             (Some(_), None) => changes.push(format!(
@@ -553,159 +613,388 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                         }
                     }
                 }
+                "backup" | "forward" => {
+                    let d = child_text(node, "duration")
+                        .and_then(|t| t.parse().ok())
+                        .map_or(0.0, |d| ticks_of(d, divisions));
+                    if node.has_tag_name("backup") {
+                        pos = (pos - d).max(0.0);
+                    } else {
+                        pos += d;
+                        high = high.max(pos);
+                    }
+                }
                 "figured-bass" => {
-                    let (figures, duration) = read_figured_bass(node);
-                    pending.push((figures, duration.map(|d| d * DIVISIONS as f64 / divisions)));
+                    let (text, duration) = read_figured_bass(node);
+                    read.figures.push(Figure {
+                        at: At {
+                            measure: m,
+                            ticks: pos,
+                        },
+                        text,
+                        ticks: duration.map(|d| ticks_of(d, divisions)),
+                    });
                 }
                 "note" => {
                     if child(node, "grace").is_some() || child(node, "cue").is_some() {
-                        graces += 1;
+                        read.graces += 1;
                         continue;
                     }
-                    let this_voice = child_text(node, "voice").unwrap_or("1").to_string();
-                    let chosen = voice.get_or_insert_with(|| this_voice.clone());
-                    if *chosen != this_voice {
-                        other_voices += 1;
-                        continue;
-                    }
-                    let pitch = child(node, "pitch").and_then(read_pitch);
-                    if child(node, "chord").is_some() {
-                        chord_notes += 1;
-                        // Keep the lowest note of a chord.
-                        if let (Some(last), Some(p)) = (entries.last_mut(), pitch)
-                            && last.pitch.is_some_and(|l| p.semitones() < l.semitones())
-                        {
-                            last.pitch = Some(p);
-                        }
-                        continue;
-                    }
-                    let duration: f64 = child_text(node, "duration")
+                    let duration = child_text(node, "duration")
                         .and_then(|t| t.parse().ok())
-                        .unwrap_or(0.0);
-                    let ticks = duration * DIVISIONS as f64 / divisions;
-                    let ties: Vec<&str> = node
+                        .map_or(0.0, |d| ticks_of(d, divisions));
+                    let chord = child(node, "chord").is_some();
+                    let start = if chord { last_start } else { pos };
+                    if !chord {
+                        last_start = pos;
+                        pos += duration;
+                        high = high.max(pos);
+                    }
+                    let Some(pitch) = child(node, "pitch").and_then(read_pitch) else {
+                        continue; // a rest, or unpitched
+                    };
+                    let pitch = Pitch::new(
+                        pitch.name.letter,
+                        pitch.name.accidental,
+                        pitch.octave + octave_shift,
+                    );
+                    let voice = child_text(node, "voice").unwrap_or("1").to_string();
+                    let mut ties: Vec<&str> = node
                         .children()
                         .filter(|n| n.has_tag_name("tie"))
                         .filter_map(|n| n.attribute("type"))
                         .collect();
-                    let continues = ties.contains(&"stop")
-                        && entries
-                            .last()
-                            .is_some_and(|l| l.tie_open && l.pitch.is_some() && l.pitch == pitch);
-                    if continues {
-                        let last = entries.last_mut().expect("checked above");
-                        last.ticks += ticks;
-                        last.tie_open = ties.contains(&"start");
+                    if ties.is_empty() {
+                        ties = node
+                            .descendants()
+                            .filter(|n| n.has_tag_name("tied"))
+                            .filter_map(|n| n.attribute("type"))
+                            .collect();
+                    }
+                    let key = (voice, pitch.semitones());
+                    let end = At {
+                        measure: m,
+                        ticks: start + duration,
+                    };
+                    if ties.contains(&"stop")
+                        && let Some(&i) = open.get(&key)
+                    {
+                        read.sounding[i].end = end;
+                        if !ties.contains(&"start") {
+                            open.remove(&key);
+                        }
                         continue;
                     }
-                    let is_rest = child(node, "rest").is_some();
-                    entries.push(Entry {
-                        bar: bar.clone(),
-                        pitch: if is_rest { None } else { pitch },
-                        ticks,
-                        figurings: if is_rest {
-                            Vec::new()
-                        } else {
-                            std::mem::take(&mut pending)
+                    read.sounding.push(Sounding {
+                        start: At {
+                            measure: m,
+                            ticks: start,
                         },
-                        tie_open: ties.contains(&"start"),
-                        time_change: pending_time.take(),
+                        end,
+                        pitch,
                     });
-                    if is_rest {
-                        pending.clear();
+                    if ties.contains(&"start") {
+                        open.insert(key, read.sounding.len() - 1);
+                    } else {
+                        open.remove(&key);
                     }
                 }
                 _ => {}
             }
         }
-        if in_upbeat {
-            upbeat_ticks = Some(entries[upbeat_from..].iter().map(|e| e.ticks).sum::<f64>());
+        read.lengths.push(high.max(pos));
+        read.numbers.push(bar);
+    }
+    read
+}
+
+/// `start..end` cut at each barrier inside it; `barriers` ascend.
+fn cut(start: i64, end: i64, barriers: &[i64]) -> Vec<(i64, i64)> {
+    let mut out = Vec::new();
+    let mut from = start;
+    for &b in barriers {
+        if b > from && b < end {
+            out.push((from, b));
+            from = b;
+        }
+    }
+    out.push((from, end));
+    out
+}
+
+/// A bass note's figurings from the figures read for it.
+fn read_figurings(
+    given: &[(String, Option<f64>)],
+    duration: Duration,
+    bar: &str,
+    what: &str,
+    changes: &mut Vec<String>,
+) -> Figurings {
+    let text = given
+        .iter()
+        .map(|(f, _)| f.as_str())
+        .collect::<Vec<_>>()
+        .join("-");
+    let Ok(figurings) = text.parse::<Figurings>() else {
+        changes.push(format!(
+            "Bar {bar}: the figures {text:?} under {what} are not supported; left empty."
+        ));
+        return Figurings::default();
+    };
+    // Keep the parts' lengths when they are not equal.
+    let lengths: Vec<Option<Duration>> = given
+        .iter()
+        .map(|(_, t)| t.and_then(|t| Duration::from_ticks(t.round() as u32)))
+        .collect();
+    let equal = lengths.windows(2).all(|w| w[0] == w[1]);
+    let all_given = lengths.iter().all(Option::is_some);
+    let figurings = if !equal && all_given {
+        figurings.with_lengths(lengths)
+    } else {
+        figurings
+    };
+    match figurings.part_ticks(duration.ticks()) {
+        Some(_) => figurings,
+        None => {
+            let parts = figurings.parts().len();
+            figurings.with_lengths(vec![None; parts])
+        }
+    }
+}
+
+/// Reads part `id` of a score as a bass line on the theorbo: the lowest
+/// sounding note of the part, whatever its voices and staves. [`ALL_PARTS`]
+/// takes the lowest note of every part instead.
+pub fn import(xml: &str, id: &str) -> Result<Import, String> {
+    let doc = parse(xml)?;
+    let chosen: Vec<_> = doc
+        .root_element()
+        .children()
+        .filter(|n| n.has_tag_name("part"))
+        .filter(|n| id == ALL_PARTS || n.attribute("id") == Some(id))
+        .collect();
+    if chosen.is_empty() {
+        return Err(format!("no part {id}"));
+    }
+    let mut changes = Vec::new();
+    let reads: Vec<PartRead> = chosen
+        .iter()
+        .enumerate()
+        .map(|(i, part)| {
+            let mut ignored = Vec::new();
+            read_part(*part, if i == 0 { &mut changes } else { &mut ignored })
+        })
+        .collect();
+
+    // Measures line up across parts; each is as long as its longest.
+    let count = reads.iter().map(|r| r.lengths.len()).max().unwrap_or(0);
+    let mut starts = vec![0.0f64];
+    for m in 0..count {
+        let length = reads
+            .iter()
+            .filter_map(|r| r.lengths.get(m))
+            .fold(0.0, |a: f64, &b| a.max(b));
+        starts.push(starts[m] + length);
+    }
+    let abs = |at: At| starts[at.measure] + at.ticks;
+    let sixteenth = Duration::new(NoteValue::Sixteenth).ticks() as f64;
+    let grid = |t: f64| ((t / sixteenth).round() * sixteenth) as i64;
+    let on_grid = |t: f64| (t - grid(t) as f64).abs() < 1e-6;
+
+    let mut spans = Vec::new();
+    let mut vanished = 0;
+    for read in &reads {
+        for s in &read.sounding {
+            let (a, b) = (abs(s.start), abs(s.end));
+            let (qa, qb) = (grid(a), grid(b));
+            if qb <= qa {
+                vanished += 1;
+                continue;
+            }
+            spans.push(Span {
+                start: qa,
+                end: qb,
+                pitch: s.pitch,
+                exact: on_grid(a) && on_grid(b),
+            });
+        }
+    }
+    if spans.is_empty() {
+        return Err("the part has no notes".into());
+    }
+
+    // The bass is the lowest note sounding at each onset. It lasts until it
+    // ends or something lower starts, so a held upper voice never turns
+    // into a bass note of its own.
+    let mut order: Vec<usize> = (0..spans.len()).collect();
+    order.sort_by_key(|&i| spans[i].start);
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut active: Vec<usize> = Vec::new();
+    let mut next = 0;
+    while next < order.len() {
+        let onset = spans[order[next]].start;
+        while next < order.len() && spans[order[next]].start == onset {
+            active.push(order[next]);
+            next += 1;
+        }
+        active.retain(|&i| spans[i].end > onset);
+        let Some(&low) = active.iter().min_by_key(|&&i| {
+            (
+                spans[i].pitch.semitones(),
+                std::cmp::Reverse(spans[i].end),
+                i,
+            )
+        }) else {
+            continue;
+        };
+        if let Some(prev) = entries.last_mut() {
+            if prev.note == low && prev.end > onset {
+                continue;
+            }
+            prev.end = prev.end.min(onset);
+        }
+        entries.push(Entry {
+            start: onset,
+            end: spans[low].end,
+            note: low,
+            figurings: Vec::new(),
+        });
+    }
+
+    for figure in reads.iter().flat_map(|r| &r.figures) {
+        let at = grid(abs(figure.at));
+        let i = entries.partition_point(|e| e.start <= at);
+        if let Some(entry) = i.checked_sub(1).map(|i| &mut entries[i])
+            && at < entry.end
+        {
+            entry.figurings.push((figure.text.clone(), figure.ticks));
         }
     }
 
-    if chord_notes > 0 {
-        changes.push(format!(
-            "{chord_notes} chord notes dropped; the lowest note of each chord is kept."
-        ));
+    let first = &reads[0];
+    let bar_of = |at: i64| {
+        let m = starts
+            .partition_point(|&s| s <= at as f64 + 1e-6)
+            .saturating_sub(1);
+        first.numbers.get(m).cloned().unwrap_or_else(|| "?".into())
+    };
+    // Rests never run over a bar line, and nothing runs over a new meter.
+    let bar_starts: Vec<i64> = starts.iter().map(|&s| grid(s)).collect();
+    let meter: Vec<(i64, TimeSignature)> = first
+        .time_changes
+        .iter()
+        .map(|&(m, t)| (grid(starts[m]), t))
+        .collect();
+    let meter_starts: Vec<i64> = meter.iter().map(|&(at, _)| at).collect();
+
+    let mut items: Vec<(i64, i64, Option<usize>)> = Vec::new();
+    let mut cursor = 0;
+    for (k, e) in entries.iter().enumerate() {
+        if e.start > cursor {
+            items.push((cursor, e.start, None));
+        }
+        items.push((e.start, e.end, Some(k)));
+        cursor = e.end;
     }
-    if other_voices > 0 {
-        changes.push(format!(
-            "{other_voices} notes in other voices skipped; only voice {} is read.",
-            voice.unwrap_or_default()
-        ));
-    }
-    if graces > 0 {
-        changes.push(format!("{graces} grace or cue notes skipped."));
+    // The last bar is filled out with a rest.
+    if let Some(&bar_end) = bar_starts.iter().find(|&&b| b >= cursor)
+        && bar_end > cursor
+    {
+        items.push((cursor, bar_end, None));
     }
 
     let mut notes = Vec::new();
-    for entry in entries {
-        let (duration, exact) = fit(entry.ticks);
-        let mut note = match entry.pitch {
-            Some(pitch) => BassNote::new(pitch),
-            None => BassNote::rest(duration),
+    let (mut next_meter, mut split, mut inexact) = (0, 0, 0);
+    for (start, end, entry) in items {
+        let barriers = if entry.is_some() {
+            &meter_starts
+        } else {
+            &bar_starts
         };
-        note.duration = duration;
-        note.time_change = entry.time_change;
-        let what = entry.pitch.map_or("a rest".to_string(), |p| p.to_string());
-        if !exact {
-            changes.push(format!(
-                "Bar {}: the length of {what} has no matching note value; it is now {}.",
-                entry.bar,
-                describe(duration)
-            ));
-        }
-        if !entry.figurings.is_empty() {
-            let text = entry
-                .figurings
-                .iter()
-                .map(|(f, _)| f.as_str())
-                .collect::<Vec<_>>()
-                .join("-");
-            match text.parse::<Figurings>() {
-                Ok(figurings) => {
-                    // Keep the parts' lengths when they are not equal.
-                    let lengths: Vec<Option<Duration>> = entry
-                        .figurings
-                        .iter()
-                        .map(|(_, t)| t.and_then(|t| Duration::from_ticks(t.round() as u32)))
-                        .collect();
-                    let equal = lengths.windows(2).all(|w| w[0] == w[1]);
-                    let all_given = lengths.iter().all(Option::is_some);
-                    let figurings = if !equal && all_given {
-                        figurings.with_lengths(lengths)
-                    } else {
-                        figurings
-                    };
-                    note.figurings = match figurings.part_ticks(note.duration.ticks()) {
-                        Some(_) => figurings,
-                        None => {
-                            let parts = figurings.parts().len();
-                            figurings.with_lengths(vec![None; parts])
-                        }
-                    };
+        let (mut at, mut pieces) = (start, 0);
+        for (a, b) in cut(start, end, barriers) {
+            for duration in Duration::pieces((b - a) as u32) {
+                let mut note = match entry {
+                    Some(k) => BassNote::new(spans[entries[k].note].pitch),
+                    None => BassNote::rest(duration),
+                };
+                note.duration = duration;
+                while next_meter < meter.len() && meter[next_meter].0 <= at {
+                    note.time_change = Some(meter[next_meter].1);
+                    next_meter += 1;
                 }
-                Err(_) => changes.push(format!(
-                    "Bar {}: the figures {text:?} under {what} are not supported; left empty.",
-                    entry.bar
-                )),
+                if let Some(k) = entry
+                    && pieces == 0
+                {
+                    let e = &entries[k];
+                    if !spans[e.note].exact {
+                        inexact += 1;
+                    }
+                    if !e.figurings.is_empty() {
+                        let what = spans[e.note].pitch.to_string();
+                        note.figurings = read_figurings(
+                            &e.figurings,
+                            duration,
+                            &bar_of(at),
+                            &what,
+                            &mut changes,
+                        );
+                    }
+                }
+                pieces += 1;
+                at += duration.ticks() as i64;
+                notes.push(note);
             }
         }
-        notes.push(note);
+        if entry.is_some() && pieces > 1 {
+            split += 1;
+        }
     }
 
-    let key = key.unwrap_or_else(|| "C major".parse().expect("valid key"));
-    let time = time.unwrap_or(TimeSignature::COMMON);
-    let upbeat = upbeat_ticks.filter(|&t| t > 0.0).map(|ticks| {
-        let (duration, exact) = fit(ticks);
-        if !exact {
-            changes.push(format!(
-                "The upbeat's length has no matching note value; it is now {}.",
-                describe(duration)
-            ));
-        }
-        duration
-    });
+    let used = entries.len();
+    if spans.len() > used {
+        changes.push(format!(
+            "{} notes above the bass left out; the lowest sounding note is kept.",
+            spans.len() - used
+        ));
+    }
+    if first.graces > 0 {
+        changes.push(format!("{} grace or cue notes skipped.", first.graces));
+    }
+    if vanished > 0 {
+        changes.push(format!(
+            "{vanished} notes shorter than a sixteenth left out."
+        ));
+    }
+    if inexact > 0 {
+        changes.push(format!(
+            "{inexact} notes have a length with no matching note value (triplets, for example); they were rounded to the nearest sixteenth."
+        ));
+    }
+    if split > 0 {
+        changes.push(format!(
+            "{split} notes are longer than a dotted whole note or run over a change of meter; they were split into repeated notes."
+        ));
+    }
+
+    let key = first
+        .key
+        .unwrap_or_else(|| "C major".parse().expect("valid key"));
+    let time = first.time.unwrap_or(TimeSignature::COMMON);
+    // A short first measure is an upbeat.
+    let opening = starts.get(1).copied().unwrap_or(0.0);
+    let upbeat = (opening > 0.0
+        && (first.implicit_first || opening < time.bar_ticks() as f64 - 1e-6))
+        .then(|| {
+            let (duration, exact) = fit(opening);
+            if !exact {
+                changes.push(format!(
+                    "The upbeat's length has no matching note value; it is now {}.",
+                    describe(duration)
+                ));
+            }
+            duration
+        });
     Ok(Import {
         document: Document {
             line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
@@ -939,9 +1228,11 @@ mod tests {
         let line = document(LINE);
         let xml = export(&line, Some(&realizations(&line)), "t");
         let parts = parts(&xml).unwrap();
-        assert_eq!(parts.len(), 2);
+        // The two parts, and the choice of every part's lowest note.
+        assert_eq!(parts.len(), 3);
         assert_eq!(parts[0].name, "Basso continuo");
         assert!(parts[0].has_figures && !parts[1].has_figures);
+        assert_eq!(parts[2].id, ALL_PARTS);
 
         let imported = import(&xml, "P1").unwrap();
         assert!(imported.changes.is_empty(), "{:?}", imported.changes);
@@ -1011,22 +1302,137 @@ mod tests {
             .collect();
         // D3 quarter; D2 (the chord's lowest) dotted quarter, its 9 7 dropped;
         // F#2 eighth; A2 tied quarter + eighth = dotted quarter with #;
-        // the 2.5-quarter rest, as near a half as a dotted half, becomes
-        // the shorter.
-        assert_eq!(notes, ["D3 4 ", "D2 4. ", "F#2 8 ", "A2 4. #", "r 2"]);
+        // the 2.5-quarter rest fills the bar: a half and an eighth.
+        assert_eq!(
+            notes,
+            ["D3 4 ", "D2 4. ", "F#2 8 ", "A2 4. #", "r 2", "r 8"]
+        );
         // The implicit first measure (a quarter) is now the upbeat.
         assert_eq!(line.upbeat().map(|d| d.to_string()), Some("4".to_string()));
         let text = imported.changes.join("\n");
         for expected in [
             "changes key",
-            "chord notes",
-            "other voices",
+            "notes above the bass",
             "grace",
             "not supported",
-            "no matching note value",
         ] {
             assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
         }
+    }
+
+    /// A two-staff keyboard part: the bass is in the lower staff's second
+    /// voice, under a melody that holds on while the bass moves.
+    const KEYBOARD: &str = r#"<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff></note>
+      <note><rest/><duration>1</duration><voice>5</voice><staff>2</staff></note>
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>5</voice><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><rest measure="yes"/><duration>12</duration><voice>1</voice></note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+    fn summary(line: &BassLine) -> Vec<String> {
+        line.notes()
+            .iter()
+            .map(|n| {
+                if n.rest {
+                    format!("r {}", n.duration)
+                } else {
+                    format!("{} {}", n.pitch, n.duration)
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_bass_is_the_lowest_sounding_note_in_any_voice_or_staff() {
+        let imported = import(KEYBOARD, "P1").unwrap();
+        // The held melody note never becomes a bass note: where the bass
+        // rests, so does the line.
+        assert_eq!(summary(&imported.document.line), ["C3 4", "r 4", "G2 2"]);
+    }
+
+    #[test]
+    fn long_rests_and_notes_keep_the_bars_in_place() {
+        // Three bars of rest, then a bar of 3/2 with a note.
+        let xml = r#"<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>B</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><rest/><duration>4</duration></note></measure>
+    <measure number="2"><note><rest/><duration>4</duration></note></measure>
+    <measure number="3"><note><rest/><duration>4</duration></note></measure>
+    <measure number="4"><attributes><time><beats>3</beats><beat-type>2</beat-type></time></attributes>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>6</duration></note></measure>
+  </part>
+</score-partwise>"#;
+        let imported = import(xml, "P1").unwrap();
+        let line = &imported.document.line;
+        // A whole-bar rest is a whole note...
+        assert_eq!(summary(line), ["r 1", "r 1", "r 1", "E3 1."]);
+        // ...and the meter change lands on the first note of its bar.
+        assert_eq!(
+            line.notes()[3].time_change.map(|t| t.to_string()),
+            Some("3/2".into())
+        );
+    }
+
+    #[test]
+    fn triplets_keep_their_bar_and_are_reported() {
+        let xml = r#"<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>B</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>3</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>1</duration></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration></note>
+      <note><pitch><step>F</step><octave>3</octave></pitch><duration>3</duration></note></measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>6</duration></note></measure>
+  </part>
+</score-partwise>"#;
+        let imported = import(xml, "P1").unwrap();
+        let ticks: u32 = imported
+            .document
+            .line
+            .notes()
+            .iter()
+            .map(|n| n.duration.ticks())
+            .sum();
+        // Two 2/4 bars, however the triplet was rounded.
+        assert_eq!(ticks, 32);
+        assert!(
+            imported
+                .changes
+                .iter()
+                .any(|c| c.contains("no matching note value"))
+        );
+    }
+
+    #[test]
+    fn all_parts_gives_the_lowest_note_of_the_score() {
+        let xml = r#"<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Top</part-name></score-part><score-part id="P2"><part-name>Low</part-name></score-part></part-list>
+  <part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+    <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration></note></measure></part>
+  <part id="P2"><measure number="1">
+    <note><pitch><step>A</step><octave>2</octave></pitch><duration>1</duration></note>
+    <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+</score-partwise>"#;
+        let imported = import(xml, ALL_PARTS).unwrap();
+        assert_eq!(summary(&imported.document.line), ["A2 4", "B4 4"]);
     }
 
     #[test]
