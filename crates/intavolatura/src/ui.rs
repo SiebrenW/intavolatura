@@ -699,12 +699,21 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
     let bars: Vec<Bar> = scene
         .bars
         .into_iter()
-        .map(|b| Bar {
-            x: b.x,
-            y: b.y,
-            width: b.width,
-            height: b.height,
-            knockout: b.knockout,
+        .flat_map(|b| {
+            // Renderers cannot draw rectangles thousands of pixels wide, as
+            // the staff lines of a long line are.
+            const PIECE: f32 = 2048.0;
+            let pieces = (b.width / PIECE).ceil().max(1.0) as usize;
+            (0..pieces).map(move |i| {
+                let from = i as f32 * PIECE;
+                Bar {
+                    x: b.x + from,
+                    y: b.y,
+                    width: (b.width - from).min(PIECE),
+                    height: b.height,
+                    knockout: b.knockout,
+                }
+            })
         })
         .collect();
     let ties: Vec<Tie> = scene
