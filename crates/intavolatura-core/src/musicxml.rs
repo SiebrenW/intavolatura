@@ -12,18 +12,17 @@ use std::fmt::Write;
 use std::io::Read;
 use std::path::Path;
 
-use crate::bass_line::{BassLine, BassNote};
+use crate::bass_line::BassLine;
 use crate::duration::TimeSignature;
 use crate::duration::{Duration, NoteValue, WHOLE};
-use crate::figuring::Figurings;
 use crate::figuring::{FigureAccidental, Figuring};
 use crate::file_format::Document;
-use crate::instrument::Instrument;
 use crate::key::Key;
 use crate::key::Mode;
 use crate::pitch::Pitch;
 use crate::pitch::{Accidental, Letter};
 use crate::realization::Realization;
+use crate::reduction;
 use crate::timing::{BarSpan, timing};
 
 /// Ticks per quarter note: MusicXML's `divisions`.
@@ -524,24 +523,6 @@ struct PartRead {
     graces: usize,
 }
 
-/// A note on the grid of sixteenths, in absolute ticks.
-struct Span {
-    start: i64,
-    end: i64,
-    pitch: Pitch,
-    /// Whether its start and end were on the grid before rounding.
-    exact: bool,
-}
-
-/// The bass at some stretch of time, taken from one `Span`.
-struct Entry {
-    start: i64,
-    end: i64,
-    note: usize,
-    /// Each figuring's text and, if given, its length in ticks.
-    figurings: Vec<(String, Option<f64>)>,
-}
-
 fn ticks_of(duration: f64, divisions: f64) -> f64 {
     duration * DIVISIONS as f64 / divisions
 }
@@ -708,60 +689,6 @@ fn read_part(part: roxmltree::Node<'_, '_>, changes: &mut Vec<String>) -> PartRe
     read
 }
 
-/// `start..end` cut at each barrier inside it; `barriers` ascend.
-fn cut(start: i64, end: i64, barriers: &[i64]) -> Vec<(i64, i64)> {
-    let mut out = Vec::new();
-    let mut from = start;
-    for &b in barriers {
-        if b > from && b < end {
-            out.push((from, b));
-            from = b;
-        }
-    }
-    out.push((from, end));
-    out
-}
-
-/// A bass note's figurings from the figures read for it.
-fn read_figurings(
-    given: &[(String, Option<f64>)],
-    duration: Duration,
-    bar: &str,
-    what: &str,
-    changes: &mut Vec<String>,
-) -> Figurings {
-    let text = given
-        .iter()
-        .map(|(f, _)| f.as_str())
-        .collect::<Vec<_>>()
-        .join("-");
-    let Ok(figurings) = text.parse::<Figurings>() else {
-        changes.push(format!(
-            "Bar {bar}: the figures {text:?} under {what} are not supported; left empty."
-        ));
-        return Figurings::default();
-    };
-    // Keep the parts' lengths when they are not equal.
-    let lengths: Vec<Option<Duration>> = given
-        .iter()
-        .map(|(_, t)| t.and_then(|t| Duration::from_ticks(t.round() as u32)))
-        .collect();
-    let equal = lengths.windows(2).all(|w| w[0] == w[1]);
-    let all_given = lengths.iter().all(Option::is_some);
-    let figurings = if !equal && all_given {
-        figurings.with_lengths(lengths)
-    } else {
-        figurings
-    };
-    match figurings.part_ticks(duration.ticks()) {
-        Some(_) => figurings,
-        None => {
-            let parts = figurings.parts().len();
-            figurings.with_lengths(vec![None; parts])
-        }
-    }
-}
-
 /// Reads part `id` of a score as a bass line on the theorbo: the lowest
 /// sounding note of the part, whatever its voices and staves. [`ALL_PARTS`]
 /// takes the lowest note of every part instead.
@@ -797,11 +724,9 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
         starts.push(starts[m] + length);
     }
     let abs = |at: At| starts[at.measure] + at.ticks;
-    let sixteenth = Duration::new(NoteValue::Sixteenth).ticks() as f64;
-    let grid = |t: f64| ((t / sixteenth).round() * sixteenth) as i64;
-    let on_grid = |t: f64| (t - grid(t) as f64).abs() < 1e-6;
+    let (grid, on_grid) = (reduction::grid, reduction::on_grid);
 
-    let mut spans = Vec::new();
+    let mut spans: Vec<reduction::Span> = Vec::new();
     let mut vanished = 0;
     for read in &reads {
         for s in &read.sounding {
@@ -811,7 +736,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
                 vanished += 1;
                 continue;
             }
-            spans.push(Span {
+            spans.push(reduction::Span {
                 start: qa,
                 end: qb,
                 pitch: s.pitch,
@@ -823,186 +748,31 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
         return Err("the part has no notes".into());
     }
 
-    // The bass is the lowest note sounding at each onset. It lasts until it
-    // ends or something lower starts, so a held upper voice never turns
-    // into a bass note of its own.
-    let mut order: Vec<usize> = (0..spans.len()).collect();
-    order.sort_by_key(|&i| spans[i].start);
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut active: Vec<usize> = Vec::new();
-    let mut next = 0;
-    while next < order.len() {
-        let onset = spans[order[next]].start;
-        while next < order.len() && spans[order[next]].start == onset {
-            active.push(order[next]);
-            next += 1;
-        }
-        active.retain(|&i| spans[i].end > onset);
-        let Some(&low) = active.iter().min_by_key(|&&i| {
-            (
-                spans[i].pitch.semitones(),
-                std::cmp::Reverse(spans[i].end),
-                i,
-            )
-        }) else {
-            continue;
-        };
-        if let Some(prev) = entries.last_mut() {
-            if prev.note == low && prev.end > onset {
-                continue;
-            }
-            prev.end = prev.end.min(onset);
-        }
-        entries.push(Entry {
-            start: onset,
-            end: spans[low].end,
-            note: low,
-            figurings: Vec::new(),
-        });
-    }
-
-    for figure in reads.iter().flat_map(|r| &r.figures) {
-        let at = grid(abs(figure.at));
-        let i = entries.partition_point(|e| e.start <= at);
-        if let Some(entry) = i.checked_sub(1).map(|i| &mut entries[i])
-            && at < entry.end
-        {
-            entry.figurings.push((figure.text.clone(), figure.ticks));
-        }
-    }
-
     let first = &reads[0];
-    let bar_of = |at: i64| {
-        let m = starts
-            .partition_point(|&s| s <= at as f64 + 1e-6)
-            .saturating_sub(1);
-        first.numbers.get(m).cloned().unwrap_or_else(|| "?".into())
-    };
-    // Rests never run over a bar line, and nothing runs over a new meter.
-    let bar_starts: Vec<i64> = starts.iter().map(|&s| grid(s)).collect();
-    let meter: Vec<(i64, TimeSignature)> = first
-        .time_changes
+    let figures: Vec<reduction::Figure> = reads
         .iter()
-        .map(|&(m, t)| (grid(starts[m]), t))
+        .flat_map(|r| &r.figures)
+        .map(|f| reduction::Figure {
+            at: grid(abs(f.at)),
+            text: f.text.clone(),
+            ticks: f.ticks,
+        })
         .collect();
-    let meter_starts: Vec<i64> = meter.iter().map(|&(at, _)| at).collect();
-
-    let mut items: Vec<(i64, i64, Option<usize>)> = Vec::new();
-    let mut cursor = 0;
-    for (k, e) in entries.iter().enumerate() {
-        if e.start > cursor {
-            items.push((cursor, e.start, None));
-        }
-        items.push((e.start, e.end, Some(k)));
-        cursor = e.end;
-    }
-    // The last bar is filled out with a rest.
-    if let Some(&bar_end) = bar_starts.iter().find(|&&b| b >= cursor)
-        && bar_end > cursor
-    {
-        items.push((cursor, bar_end, None));
-    }
-
-    let mut notes = Vec::new();
-    let (mut next_meter, mut split, mut inexact) = (0, 0, 0);
-    for (start, end, entry) in items {
-        let barriers = if entry.is_some() {
-            &meter_starts
-        } else {
-            &bar_starts
-        };
-        let (mut at, mut pieces) = (start, 0);
-        for (a, b) in cut(start, end, barriers) {
-            for duration in Duration::pieces((b - a) as u32) {
-                let mut note = match entry {
-                    Some(k) => BassNote::new(spans[entries[k].note].pitch),
-                    None => BassNote::rest(duration),
-                };
-                note.duration = duration;
-                while next_meter < meter.len() && meter[next_meter].0 <= at {
-                    note.time_change = Some(meter[next_meter].1);
-                    next_meter += 1;
-                }
-                if let Some(k) = entry
-                    && pieces == 0
-                {
-                    let e = &entries[k];
-                    if !spans[e.note].exact {
-                        inexact += 1;
-                    }
-                    if !e.figurings.is_empty() {
-                        let what = spans[e.note].pitch.to_string();
-                        note.figurings = read_figurings(
-                            &e.figurings,
-                            duration,
-                            &bar_of(at),
-                            &what,
-                            &mut changes,
-                        );
-                    }
-                }
-                pieces += 1;
-                at += duration.ticks() as i64;
-                notes.push(note);
-            }
-        }
-        if entry.is_some() && pieces > 1 {
-            split += 1;
-        }
-    }
-
-    let used = entries.len();
-    if spans.len() > used {
-        changes.push(format!(
-            "{} notes above the bass left out; the lowest sounding note is kept.",
-            spans.len() - used
-        ));
-    }
-    if first.graces > 0 {
-        changes.push(format!("{} grace or cue notes skipped.", first.graces));
-    }
-    if vanished > 0 {
-        changes.push(format!(
-            "{vanished} notes shorter than a sixteenth left out."
-        ));
-    }
-    if inexact > 0 {
-        changes.push(format!(
-            "{inexact} notes have a length with no matching note value (triplets, for example); they were rounded to the nearest sixteenth."
-        ));
-    }
-    if split > 0 {
-        changes.push(format!(
-            "{split} notes are longer than a dotted whole note or run over a change of meter; they were split into repeated notes."
-        ));
-    }
-
-    let key = first
-        .key
-        .unwrap_or_else(|| "C major".parse().expect("valid key"));
-    let time = first.time.unwrap_or(TimeSignature::COMMON);
-    // A short first measure is an upbeat.
-    let opening = starts.get(1).copied().unwrap_or(0.0);
-    let upbeat = (opening > 0.0
-        && (first.implicit_first || opening < time.bar_ticks() as f64 - 1e-6))
-        .then(|| {
-            let (duration, exact) = fit(opening);
-            if !exact {
-                changes.push(format!(
-                    "The upbeat's length has no matching note value; it is now {}.",
-                    describe(duration)
-                ));
-            }
-            duration
-        });
-    Ok(Import {
-        document: Document {
-            line: BassLine::with_notes(key, time, notes).with_upbeat(upbeat),
-            instrument: Instrument::theorbo_in_a(),
-            tempo: None,
+    Ok(reduction::assemble(
+        spans,
+        vanished,
+        &figures,
+        &reduction::Layout {
+            starts: &starts,
+            numbers: &first.numbers,
+            time_changes: &first.time_changes,
+            key: first.key,
+            time: first.time,
+            implicit_first: first.implicit_first,
+            graces: first.graces,
         },
         changes,
-    })
+    ))
 }
 
 fn read_key(node: roxmltree::Node<'_, '_>) -> Option<Key> {
@@ -1061,35 +831,6 @@ fn read_figures(node: roxmltree::Node<'_, '_>) -> String {
         .filter(|f| !f.is_empty())
         .collect();
     figures.join(" ")
-}
-
-/// The note value nearest to a length in ticks, and whether it is exact.
-fn fit(ticks: f64) -> (Duration, bool) {
-    let best = NoteValue::ALL
-        .into_iter()
-        .flat_map(|v| [Duration::new(v), Duration::dotted(v)])
-        .min_by(|a, b| {
-            (a.ticks() as f64 - ticks)
-                .abs()
-                .total_cmp(&(b.ticks() as f64 - ticks).abs())
-        })
-        .expect("note values exist");
-    (best, (best.ticks() as f64 - ticks).abs() < 1e-6)
-}
-
-fn describe(duration: Duration) -> String {
-    let value = match duration.value {
-        NoteValue::Whole => "a whole note",
-        NoteValue::Half => "a half note",
-        NoteValue::Quarter => "a quarter",
-        NoteValue::Eighth => "an eighth",
-        NoteValue::Sixteenth => "a sixteenth",
-    };
-    if duration.dotted {
-        format!("{value}, dotted")
-    } else {
-        value.to_string()
-    }
 }
 
 #[cfg(test)]

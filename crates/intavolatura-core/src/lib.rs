@@ -11,11 +11,13 @@ pub mod file_format;
 pub mod fingering;
 pub mod instrument;
 pub mod key;
+pub mod midi;
 pub mod musicxml;
 pub mod pitch;
 pub mod playback;
 pub mod ranking;
 pub mod realization;
+mod reduction;
 pub mod resolution;
 pub mod timing;
 
