@@ -1,0 +1,68 @@
+name: Release
+
+# Push a tag such as v0.1.0 to build the app for macOS, Linux and Windows and
+# publish a GitHub release with the archives.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - platform: linux
+            os: ubuntu-22.04
+            targets: ""
+          - platform: windows
+            os: windows-latest
+            targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux libraries (Slint, cpal)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev libxkbcommon-dev libasound2-dev
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Package
+        shell: bash
+        run: scripts/package.sh ${{ matrix.platform }} "${GITHUB_REF_NAME#v}" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: intavolatura-${{ matrix.platform }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body: |
+            Downloads:
+            - macOS (Apple silicon and Intel): `intavolatura-*-macos.zip`, holding `Intavolatura.app`.
+            - Linux (x86_64): `intavolatura-*-linux-x86_64.tar.gz`. Needs fontconfig, xkbcommon and ALSA, present on desktop systems.
+            - Windows (x86_64): `intavolatura-*-windows-x86_64.zip`.
+
+            The app is not signed. On macOS, after unzipping, clear the download quarantine once, else macOS refuses to open it:
+
+                xattr -dr com.apple.quarantine Intavolatura.app
+
+            On Windows, SmartScreen may warn on first start: More info → Run anyway.
