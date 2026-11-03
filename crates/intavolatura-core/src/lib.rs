@@ -4,6 +4,7 @@
 //! scientific pitch notation: C4 is middle C.
 
 pub mod bass_line;
+pub mod chart;
 pub mod chord;
 pub mod duration;
 pub mod figuring;
@@ -22,6 +23,7 @@ pub mod resolution;
 pub mod timing;
 
 pub use bass_line::{BassLine, BassNote, Editor};
+pub use chart::{ChartShape, chart_shape};
 pub use chord::{Chord, ChordTone};
 pub use duration::{Duration, NoteValue, Placement, TimeSignature, place};
 pub use figuring::{Figure, FigureAccidental, Figuring, Figurings, Shape};

@@ -1,0 +1,40 @@
+{
+ "command": "realize",
+ "key": {
+  "signature": 0,
+  "mode": "major"
+ },
+ "instrument": {
+  "preset": "guitar-5",
+  "frets": 10,
+  "strings": [
+   {
+    "pitch": 45
+   },
+   {
+    "pitch": 50
+   },
+   {
+    "pitch": 55
+   },
+   {
+    "pitch": 59
+   },
+   {
+    "pitch": 64
+   }
+  ]
+ },
+ "notes": [
+  {
+   "id": 0,
+   "pitch": 31,
+   "tpc": 15
+  },
+  {
+   "id": 1,
+   "pitch": 48,
+   "tpc": 14
+  }
+ ]
+}

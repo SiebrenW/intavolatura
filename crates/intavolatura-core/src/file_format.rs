@@ -62,7 +62,7 @@ pub fn write(document: &Document) -> String {
         } else {
             out.push_str(&format!("{} {}", note.pitch, note.duration));
         }
-        let extras = note.pin.is_some() || note.time_change.is_some();
+        let extras = note.pin.is_some() || note.time_change.is_some() || note.key_change.is_some();
         if !note.figurings.is_empty() || extras {
             out.push_str(" |");
             if !note.figurings.is_empty() {
@@ -78,6 +78,9 @@ pub fn write(document: &Document) -> String {
         }
         if let Some(time) = note.time_change {
             out.push_str(&format!(" | time {time}"));
+        }
+        if let Some(key) = note.key_change {
+            out.push_str(&format!(" | key {key}"));
         }
         out.push('\n');
     }
@@ -172,10 +175,12 @@ fn read_note(line: &str, instrument: &Instrument) -> Result<BassNote, &'static s
     for section in parts {
         if let Some(time) = section.strip_prefix("time") {
             note.time_change = Some(time.trim().parse().map_err(|_| "invalid time signature")?);
+        } else if let Some(key) = section.strip_prefix("key") {
+            note.key_change = Some(key.trim().parse().map_err(|_| "invalid key")?);
         } else if section.starts_with("pin") && !note.rest {
             note.pin = Some(read_pin(section, instrument)?);
         } else {
-            return Err("expected `pin` or `time`");
+            return Err("expected `pin`, `time` or `key`");
         }
     }
     Ok(note)
@@ -269,6 +274,23 @@ r 2 | | time 3/2
     }
 
     #[test]
+    fn key_changes_round_trip() {
+        let text = "intavolatura 1\nkey: D minor\ntime: 4/4\ninstrument: theorbo-a-14\n\nD3 4\nC3 4 | | time 3/4 | key C major\nG2 4 | | key A minor\n";
+        let doc = read(text).unwrap();
+        let keys: Vec<String> = doc.line.keys().iter().map(|k| k.to_string()).collect();
+        assert_eq!(keys, ["D minor", "C major", "A minor"]);
+        assert_eq!(write(&doc), text);
+    }
+
+    #[test]
+    fn triplets_round_trip() {
+        let text = "intavolatura 1\nkey: C major\ntime: 4/4\ninstrument: theorbo-a-14\n\nC3 8t\nD3 8t\nE3 8t\n";
+        let doc = read(text).unwrap();
+        assert!(doc.line.notes().iter().all(|n| n.duration.triplet));
+        assert_eq!(write(&doc), text);
+    }
+
+    #[test]
     fn writing_then_reading_round_trips() {
         let doc = read(SAMPLE).unwrap();
         let written = write(&doc);
@@ -344,7 +366,7 @@ r 2 | | time 3/2
             (
                 format!("{header}C3 | | 1:0\n"),
                 5,
-                "expected `pin` or `time`",
+                "expected `pin`, `time` or `key`",
             ),
         ];
         for (text, line, message) in cases {

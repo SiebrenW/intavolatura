@@ -1,0 +1,36 @@
+{
+  "presets": [
+    {
+      "id": "theorbo-a-14",
+      "name": "Theorbo in A (14 courses)"
+    },
+    {
+      "id": "lute-d-13",
+      "name": "Baroque lute in D minor (13 courses)"
+    },
+    {
+      "id": "theorbo-g-14",
+      "name": "Theorbo in G (14 courses)"
+    },
+    {
+      "id": "archlute-g-14",
+      "name": "Archlute in G (14 courses)"
+    },
+    {
+      "id": "lute-g-8",
+      "name": "Renaissance lute in G (8 courses)"
+    },
+    {
+      "id": "lute-g-7",
+      "name": "Renaissance lute in G (7 courses)"
+    },
+    {
+      "id": "lute-g-6",
+      "name": "Renaissance lute in G (6 courses)"
+    },
+    {
+      "id": "guitar-5",
+      "name": "Baroque guitar (5 courses, bourdons)"
+    }
+  ]
+}

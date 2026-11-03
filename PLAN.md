@@ -35,13 +35,15 @@ Steps:
 15. [x] **Upbeat**: a bass line can start with an incomplete bar. Bar lines, export (`implicit` first measure) and import (instead of the current warning) follow.
 16. [x] **Time signature changes**: a time signature can start at any note; drawn there on both staves, kept in files, exported and imported (instead of being ignored).
 17. [x] **Uneven suspension splits**: a figuring part can carry its own duration, e.g. a dotted quarter then an eighth for 7–6.
-18. [ ] **Triplets** (optional): three notes in the time of two, for proportio/tripla passages.
+18. [x] **Triplets**: a note can be a triplet (`/`, file `8t`), two thirds of its value; ticks are now 96 to the whole note so triplets are whole numbers. Drawn with a bracketed 3 over the bass staff, exported with `<time-modification>`, imported when the file has them exactly (MIDI imports snap to sixteenths unless exactly on the triplet grid). Not drawn: a 3 over the tablature signs.
+19. [x] **Key changes**: a new key can start at any note (`K` opens the picker; file `| key G major`), drawn on every staff with naturals, kept per system when printing, exported and imported with MusicXML (MIDI import keeps the first key). The instrument stays tuned to the first key.
 
 Decided:
 - Upbeat: set next to the time signature as a duration; files store `upbeat: 4`.
 - Meter change: `T` on a note opens the time signature picker "from this note on"; drawn before that note; files store it on the note (`| time 3/2`). A change after an incomplete bar marks that bar in the warning colour.
 - Uneven splits: a colon and a duration after a part, `7:4.-6:8`; parts without a length share the rest equally; lengths that do not add up are refused like an invalid figuring.
-- Triplets: later.
+- Triplets: per-note flag, bracket drawn by runs of three notes (mixed values bracket as three notes).
+- Key changes: tuning stays at the first key.
 
 ### B. Playback
 

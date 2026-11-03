@@ -89,6 +89,8 @@ export component AppWindow inherits Window {
     // The current duration: index into whole … sixteenth, and the dot.
     in property <int> duration-value;
     in property <bool> duration-dotted;
+    in property <int> key-change-index;
+    in property <bool> duration-triplet;
     in property <bool> has-selection;
     in property <length> selection-x;
     in property <length> selection-width;
@@ -145,8 +147,10 @@ export component AppWindow inherits Window {
     // A new time signature from the selected note: 0 removes it, then the
     // time signatures in picker order.
     callback meter-change-selected(int);
+    callback key-change-selected(int);
     callback duration-selected(int);
     callback dot-toggled();
+    callback triplet-toggled();
     callback figuring-edited(string);
     callback figuring-accepted(string);
     callback open-file();
@@ -158,6 +162,10 @@ export component AppWindow inherits Window {
     in property <[string]> import-changes;
     callback import-part(int);
     callback preferences-changed();
+
+    public function choose-key-change() {
+        key-change-picker.open();
+    }
 
     public function choose-meter-change() {
         meter-change-popup.show();
@@ -258,6 +266,7 @@ export component AppWindow inherits Window {
                 DurationBar {
                     value: root.duration-value;
                     dotted: root.duration-dotted;
+                    triplet: root.duration-triplet;
                     ink: root.ink;
                     muted: root.muted;
                     highlight: root.highlight;
@@ -268,6 +277,10 @@ export component AppWindow inherits Window {
                     }
                     dot-toggled => {
                         root.dot-toggled();
+                        main.focus();
+                    }
+                    triplet-toggled => {
+                        root.triplet-toggled();
                         main.focus();
                     }
                 }
@@ -811,6 +824,28 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+    // Opened with K; the button itself has no size, only its popup shows.
+    key-change-picker := KeyPicker {
+        x: 160px;
+        y: 38px;
+        width: 0px;
+        height: 0px;
+        names: root.keys;
+        current: root.key-change-index;
+        label: "";
+        allow-none: true;
+        none-text: "No key change here";
+        ink: root.ink;
+        muted: root.muted;
+        panel: root.panel;
+        panel-border: root.panel-border;
+        highlight: root.highlight;
+        selected(index) => {
+            root.key-change-selected(index);
+            main.focus();
         }
     }
 

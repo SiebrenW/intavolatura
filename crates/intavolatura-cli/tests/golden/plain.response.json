@@ -1,0 +1,175 @@
+{
+  "notes": [
+    {
+      "id": 0,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 5,
+              "fret": 1,
+              "pitch": 46,
+              "tpc": 12,
+              "struck": true
+            },
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 3,
+              "fret": 0,
+              "pitch": 55,
+              "tpc": 15,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 5,
+              "fret": 0,
+              "pitch": 45,
+              "tpc": 17,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 0,
+              "pitch": 52,
+              "tpc": 18,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            },
+            {
+              "string": 2,
+              "fret": 2,
+              "pitch": 61,
+              "tpc": 21,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            },
+            {
+              "string": 2,
+              "fret": 0,
+              "pitch": 59,
+              "tpc": 19,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 6,
+              "fret": 0,
+              "pitch": 43,
+              "tpc": 15,
+              "struck": true
+            },
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 2,
+              "fret": 0,
+              "pitch": 59,
+              "tpc": 19,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -266,6 +266,31 @@ impl Instrument {
         Instrument { courses, ..*self }
     }
 
+    /// This instrument's rules (ranking, strumming) on another stringing,
+    /// such as a part's tuning in a score: `strings` gives each course's
+    /// open pitch and whether it only sounds open, course 1 first. A
+    /// fretted course keeps this instrument's fret count for that course
+    /// when it has one (the theorbo's extra frets on course 1), else gets
+    /// `frets`. `None` for more than [`MAX_COURSES`] courses or none.
+    pub fn restrung(&self, strings: &[(Pitch, bool)], frets: u8) -> Option<Instrument> {
+        if !(1..=MAX_COURSES).contains(&strings.len()) {
+            return None;
+        }
+        let courses = strings
+            .iter()
+            .enumerate()
+            .map(|(i, &(open, open_only))| {
+                let frets = match self.courses.get(i) {
+                    _ if open_only => 0,
+                    Some(own) if !own.is_diapason() => own.frets,
+                    _ => frets,
+                };
+                Course { open, frets }
+            })
+            .collect();
+        Some(Instrument { courses, ..*self })
+    }
+
     /// Semitone number of the lowest note the instrument can sound.
     pub fn lowest_semitones(&self) -> i16 {
         self.courses
@@ -332,5 +357,50 @@ mod tests {
         let d_major = Key::new("D".parse().unwrap(), Mode::Major).unwrap();
         let retuned = lute.with_diapasons_in(d_major);
         assert_eq!(retuned.courses()[6].open.to_string(), "F#2");
+    }
+
+    fn strings(spec: &[(&str, bool)]) -> Vec<(Pitch, bool)> {
+        spec.iter()
+            .map(|&(p, open_only)| (p.parse().unwrap(), open_only))
+            .collect()
+    }
+
+    #[test]
+    fn a_theorbo_strung_as_in_a_score_keeps_its_own_fret_counts() {
+        let theorbo = Instrument::theorbo_in_a();
+        let fretted = ["A3", "E3", "B3", "G3", "D3", "A2"].map(|p| (p, false));
+        let open = ["G2", "F#2", "E2", "D2", "C#2", "B1", "A1", "G1"].map(|p| (p, true));
+        let spec: Vec<_> = fretted.into_iter().chain(open).collect();
+        let restrung = theorbo.restrung(&strings(&spec), 13).unwrap();
+        assert_eq!(restrung.id(), "theorbo-a-14");
+        let frets: Vec<u8> = restrung.courses().iter().map(|c| c.frets).collect();
+        assert_eq!(frets, [11, 9, 9, 9, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(restrung.courses()[7].open.to_string(), "F#2");
+    }
+
+    #[test]
+    fn courses_the_preset_lacks_or_leaves_open_take_the_score_frets() {
+        let lute = Instrument::lute_in_g(7);
+        let spec = [
+            ("G4", false),
+            ("D4", false),
+            ("A3", false),
+            ("F3", false),
+            ("C3", false),
+            ("G2", false),
+            ("F2", false),
+            ("D2", false),
+        ];
+        let restrung = lute.restrung(&strings(&spec), 12).unwrap();
+        let frets: Vec<u8> = restrung.courses().iter().map(|c| c.frets).collect();
+        assert_eq!(frets, [8, 8, 8, 8, 8, 8, 12, 12]);
+    }
+
+    #[test]
+    fn a_stringing_needs_one_to_sixteen_courses() {
+        let lute = Instrument::lute_in_g(6);
+        assert_eq!(lute.restrung(&[], 8), None);
+        let many = vec![("G2".parse().unwrap(), false); MAX_COURSES + 1];
+        assert_eq!(lute.restrung(&many, 8), None);
     }
 }

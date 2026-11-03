@@ -1,0 +1,20 @@
+{
+ "command": "presets",
+ "strings": [
+  {
+   "pitch": 45
+  },
+  {
+   "pitch": 50
+  },
+  {
+   "pitch": 55
+  },
+  {
+   "pitch": 59
+  },
+  {
+   "pitch": 64
+  }
+ ]
+}

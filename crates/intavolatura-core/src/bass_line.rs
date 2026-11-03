@@ -20,6 +20,8 @@ pub struct BassNote {
     pub rest: bool,
     /// A new time signature starting at this note.
     pub time_change: Option<TimeSignature>,
+    /// A new key starting at this note.
+    pub key_change: Option<Key>,
 }
 
 impl BassNote {
@@ -32,6 +34,7 @@ impl BassNote {
             pin: None,
             rest: false,
             time_change: None,
+            key_change: None,
         }
     }
 
@@ -45,7 +48,8 @@ impl BassNote {
     }
 }
 
-/// An ordered sequence of bass notes in a single key and time signature.
+/// An ordered sequence of bass notes in a key and time signature, either
+/// of which may change at a note.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BassLine {
     key: Key,
@@ -84,6 +88,27 @@ impl BassLine {
         self.key
     }
 
+    /// The key in force at a note: the last key change at or before it.
+    pub fn key_at(&self, index: usize) -> Key {
+        self.notes[..(index + 1).min(self.notes.len())]
+            .iter()
+            .rev()
+            .find_map(|n| n.key_change)
+            .unwrap_or(self.key)
+    }
+
+    /// The key in force at each note.
+    pub fn keys(&self) -> Vec<Key> {
+        let mut key = self.key;
+        self.notes
+            .iter()
+            .map(|n| {
+                key = n.key_change.unwrap_or(key);
+                key
+            })
+            .collect()
+    }
+
     pub fn time(&self) -> TimeSignature {
         self.time
     }
@@ -104,6 +129,8 @@ enum Edit {
     Insert(usize, BassNote),
     Remove(usize),
     Replace(usize, BassNote),
+    /// Replaces several notes at once.
+    ReplaceMany(Vec<(usize, BassNote)>),
     /// A new key with the pin of every note, in order.
     SetKey(Key, Vec<Option<Fingering>>),
     SetTime(TimeSignature),
@@ -121,6 +148,12 @@ impl Edit {
             Edit::Replace(index, note) => {
                 Edit::Replace(index, std::mem::replace(&mut line.notes[index], note))
             }
+            Edit::ReplaceMany(notes) => Edit::ReplaceMany(
+                notes
+                    .into_iter()
+                    .map(|(i, note)| (i, std::mem::replace(&mut line.notes[i], note)))
+                    .collect(),
+            ),
             Edit::SetKey(key, pins) => {
                 let old_pins = line
                     .notes
@@ -190,6 +223,37 @@ impl Editor {
         self.replace(index, note)
     }
 
+    /// Starts a new key at a note, or removes one with `None`. Choosing
+    /// the key already in force there removes the change. The pins of the
+    /// notes in the new key's stretch are dropped, since their chords change.
+    pub fn set_key_change(&mut self, index: usize, key: Option<Key>) -> bool {
+        let before = match index {
+            0 => self.line.key,
+            _ => self.line.key_at(index - 1),
+        };
+        let mut changed = self.line.notes[index].clone();
+        changed.key_change = key.filter(|&k| k != before);
+        if changed == self.line.notes[index] {
+            return false;
+        }
+        let stretch = self.line.notes[index + 1..]
+            .iter()
+            .position(|n| n.key_change.is_some())
+            .map_or(self.line.notes.len(), |p| index + 1 + p);
+        let edits = (index..stretch)
+            .map(|i| {
+                let mut note = if i == index {
+                    changed.clone()
+                } else {
+                    self.line.notes[i].clone()
+                };
+                note.pin = None;
+                (i, note)
+            })
+            .collect();
+        self.perform(Edit::ReplaceMany(edits))
+    }
+
     /// Sets the upbeat: a short first bar of this length, or none.
     pub fn set_upbeat(&mut self, upbeat: Option<Duration>) -> bool {
         if upbeat == self.line.upbeat {
@@ -225,7 +289,7 @@ impl Editor {
         if note.rest {
             return false;
         }
-        let pitch = self.line.key.step(note.pitch, steps);
+        let pitch = self.line.key_at(index).step(note.pitch, steps);
         self.set_pitch(index, pitch)
     }
 
@@ -490,6 +554,38 @@ mod tests {
                 .iter()
                 .all(|n| n.time_change.is_none())
         );
+    }
+
+    #[test]
+    fn key_changes_apply_from_their_note_and_drop_pins() {
+        let mut editor = editor_with(&["D3", "A2", "B2", "C3"]);
+        for i in 0..4 {
+            editor.set_pin(i, some_pin());
+        }
+        let minor = key("D", Mode::Minor);
+        assert!(editor.set_key_change(2, Some(minor)));
+        assert_eq!(editor.line().key_at(1), key("D", Mode::Major));
+        assert_eq!(editor.line().key_at(2), minor);
+        assert_eq!(editor.line().key_at(3), minor);
+        assert_eq!(
+            editor.line().keys()[1..],
+            [key("D", Mode::Major), minor, minor]
+        );
+        let pins: Vec<bool> = editor
+            .line()
+            .notes()
+            .iter()
+            .map(|n| n.pin.is_some())
+            .collect();
+        assert_eq!(pins, [true, true, false, false]);
+        // The key already in force is no change.
+        assert!(!editor.set_key_change(3, Some(minor)));
+        assert!(!editor.set_key_change(1, Some(key("D", Mode::Major))));
+        // Moving a note by steps follows the key at the note.
+        editor.undo();
+        assert_eq!(editor.line().key_at(3), key("D", Mode::Major));
+        assert!(editor.line().notes().iter().all(|n| n.pin.is_some()));
+        assert!(editor.line().notes().iter().all(|n| n.key_change.is_none()));
     }
 
     #[test]

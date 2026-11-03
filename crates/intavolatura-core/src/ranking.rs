@@ -3,6 +3,7 @@
 //! Lower is better. The weights follow the order of preferences in
 //! `PLAN.md` and are meant to be tuned against real bass lines.
 
+use crate::chart::chart_shape;
 use crate::chord::Chord;
 use crate::fingering::Fingering;
 use crate::instrument::Instrument;
@@ -29,6 +30,9 @@ pub struct Weights {
     pub upper_register: f32,
     /// Per note more or fewer than four.
     pub note_count: f32,
+    /// A fingering that is a common guitar chord shape (a bonus, so
+    /// negative); only for the strummed baroque guitar.
+    pub chart_shape: f32,
 }
 
 impl Default for Weights {
@@ -43,6 +47,7 @@ impl Default for Weights {
             upper_spread: 1.0,
             upper_register: 2.0,
             note_count: 0.8,
+            chart_shape: -2.0,
         }
     }
 }
@@ -60,6 +65,7 @@ impl Weights {
             self.upper_spread,
             self.upper_register,
             self.note_count,
+            self.chart_shape,
         ]
     }
 
@@ -75,11 +81,12 @@ impl Weights {
             upper_spread: w[6],
             upper_register: w[7],
             note_count: w[8],
+            chart_shape: w[9],
         }
     }
 }
 
-pub const FEATURE_COUNT: usize = 9;
+pub const FEATURE_COUNT: usize = 10;
 
 /// Names of the measured preferences, in the order of [`features`] and
 /// [`Weights::to_array`].
@@ -93,6 +100,7 @@ pub const FEATURES: [&str; FEATURE_COUNT] = [
     "upper_spread",
     "upper_register",
     "note_count",
+    "chart_shape",
 ];
 
 /// Where the upper voices of a continuo realization belong, as semitone
@@ -146,6 +154,7 @@ pub fn features(
     written_bass: Pitch,
 ) -> [f32; FEATURE_COUNT] {
     let voicing = fingering.voicing(instrument, chord);
+    let chart = chart_shape(fingering).filter(|_| instrument.is_strummed());
     let flag = |b: bool| if b { 1.0 } else { 0.0 };
 
     let bass_octave_lower = flag(voicing[0].semitones() < written_bass.semitones());
@@ -188,7 +197,13 @@ pub fn features(
         stopped.len() as f32,
         upper_spread,
         upper_register,
-        note_count(voicing.len(), instrument),
+        // A chart chord is complete as printed, even with courses muted.
+        if chart.is_some_and(|s| s.complete) {
+            0.0
+        } else {
+            note_count(voicing.len(), instrument)
+        },
+        flag(chart.is_some()),
     ]
 }
 
@@ -324,11 +339,23 @@ mod tests {
             let found = candidate_fingerings(&guitar, &chord, bass, HandLimits::default());
             let ranked = rank(found, &guitar, &chord, bass, &Weights::default());
             let best = ranked[0].fingering.voicing(&guitar, &chord);
-            // A full strum where one exists, as it does for these chords.
+            // A full strum where one exists, or a chord from the chart.
             let full = ranked
                 .iter()
                 .any(|r| r.fingering.played().count() == guitar.courses().len());
-            assert!(!full || best.len() == 5, "{bass}: {best:?}");
+            let chart = chart_shape(&ranked[0].fingering).is_some();
+            assert!(!full || best.len() == 5 || chart, "{bass}: {best:?}");
         }
+    }
+
+    #[test]
+    fn the_baroque_guitar_prefers_open_chart_chords_to_a_full_barre() {
+        let guitar = Instrument::baroque_guitar();
+        let bass: Pitch = "D3".parse().unwrap();
+        let chord = Chord::new(bass.name, &"".parse().unwrap(), c_major());
+        let found = candidate_fingerings(&guitar, &chord, bass, HandLimits::default());
+        let ranked = rank(found, &guitar, &chord, bass, &Weights::default());
+        let best = chart_shape(&ranked[0].fingering).expect("a chart shape");
+        assert_eq!(best.name, "Dm");
     }
 }

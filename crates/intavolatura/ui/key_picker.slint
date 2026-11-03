@@ -104,6 +104,9 @@ export component KeyPicker inherits Rectangle {
     in property <[string]> names;
     in property <int> current;
     in property <string> label;
+    // Offers a button that selects index -1: no key.
+    in property <bool> allow-none: false;
+    in property <string> none-text;
     in property <color> ink;
     in property <color> muted;
     in property <color> panel;
@@ -185,6 +188,14 @@ export component KeyPicker inherits Rectangle {
                 VerticalLayout {
                     alignment: start;
                     spacing: 4px;
+
+                    if root.allow-none: Button {
+                        text: root.none-text;
+                        clicked => {
+                            root.selected(-1);
+                            popup.close();
+                        }
+                    }
 
                     Text {
                         text: root.names[root.previewed];

@@ -16,7 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let realizations: Vec<_> = line
         .notes()
         .iter()
-        .map(|n| realize(n, line.key(), &instrument, &settings))
+        .zip(line.keys())
+        .map(|(n, key)| realize(n, key, &instrument, &settings))
         .collect();
     let with_realization = !rest.iter().any(|a| a == "--bass-only");
     let title = std::path::Path::new(input)

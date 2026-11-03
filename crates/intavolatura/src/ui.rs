@@ -109,6 +109,10 @@ pub fn wire(window: &AppWindow, app: App) {
             s.window.unwrap().invoke_choose_meter_change();
             return true;
         }
+        if !editing && !command && text == "k" && s.app.borrow().selected.is_some() {
+            s.window.unwrap().invoke_choose_key_change();
+            return true;
+        }
         if !editing && !command && text == " " {
             toggle_play(&s);
             return true;
@@ -162,6 +166,14 @@ pub fn wire(window: &AppWindow, app: App) {
     });
 
     let s = shared.clone();
+    window.on_key_change_selected(move |index| {
+        let key = usize::try_from(index)
+            .ok()
+            .and_then(|i| s.keys.get(i).copied());
+        s.update(|_, app| app.set_key_change(key))
+    });
+
+    let s = shared.clone();
     window.on_time_selected(move |index| {
         s.update(|_, app| {
             if let Some(&time) = TimeSignature::ALL.get(index as usize) {
@@ -195,8 +207,10 @@ pub fn wire(window: &AppWindow, app: App) {
     window.on_duration_selected(move |index| {
         s.update(|_, app| {
             if let Some(&value) = NoteValue::ALL.get(index as usize) {
-                let dotted = app.current_duration().dotted;
-                app.set_duration(Duration { value, dotted });
+                app.set_duration(Duration {
+                    value,
+                    ..app.current_duration()
+                });
             }
         })
     });
@@ -207,6 +221,19 @@ pub fn wire(window: &AppWindow, app: App) {
             let current = app.current_duration();
             app.set_duration(Duration {
                 dotted: !current.dotted,
+                triplet: false,
+                ..current
+            });
+        })
+    });
+
+    let s = shared.clone();
+    window.on_triplet_toggled(move || {
+        s.update(|_, app| {
+            let current = app.current_duration();
+            app.set_duration(Duration {
+                dotted: false,
+                triplet: !current.triplet,
                 ..current
             });
         })
@@ -357,16 +384,21 @@ fn upbeat_choices(time: TimeSignature) -> Vec<Duration> {
         .iter()
         .rev()
         .flat_map(|&v| [Duration::new(v), Duration::dotted(v)])
-        .filter(|d| d.ticks() < time.bar_ticks() && d.ticks() >= 4)
+        .filter(|d| d.ticks() < time.bar_ticks() && d.ticks() >= 12)
         .collect()
 }
 
 /// An upbeat as a fraction of a whole note: 1/4, 3/8.
 fn upbeat_label(duration: Duration) -> String {
     let (mut numerator, mut denominator) = (duration.ticks(), intavolatura_core::duration::WHOLE);
-    while numerator % 2 == 0 && denominator % 2 == 0 {
-        numerator /= 2;
-        denominator /= 2;
+    while numerator % 2 == 0 && denominator % 2 == 0 || numerator % 3 == 0 && denominator % 3 == 0 {
+        let factor = if numerator % 2 == 0 && denominator % 2 == 0 {
+            2
+        } else {
+            3
+        };
+        numerator /= factor;
+        denominator /= factor;
     }
     format!("Upbeat {numerator}/{denominator}")
 }
@@ -801,8 +833,14 @@ pub fn refresh(window: &AppWindow, app: &App, keys: &[Key]) {
         .unwrap_or(2);
     window.set_duration_value(value as i32);
     window.set_duration_dotted(duration.dotted);
+    window.set_duration_triplet(duration.triplet);
 
     let key = app.line().key();
+    window.set_key_change_index(
+        keys.iter()
+            .position(|&k| k == app.current_key())
+            .unwrap_or(0) as i32,
+    );
     window.set_key_index(keys.iter().position(|&k| k == key).unwrap_or(0) as i32);
     window.set_key_label(key_label(key).into());
 

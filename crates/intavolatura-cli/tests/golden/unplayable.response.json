@@ -1,0 +1,52 @@
+{
+  "notes": [
+    {
+      "id": 0,
+      "error": "no playable fingering"
+    },
+    {
+      "id": 1,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 3,
+              "pitch": 48,
+              "tpc": 14,
+              "struck": true
+            },
+            {
+              "string": 3,
+              "fret": 2,
+              "pitch": 52,
+              "tpc": 18,
+              "struck": true
+            },
+            {
+              "string": 2,
+              "fret": 0,
+              "pitch": 55,
+              "tpc": 15,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 60,
+              "tpc": 14,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 64,
+              "tpc": 18,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

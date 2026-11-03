@@ -6,8 +6,8 @@ use intavolatura_core::file_format::{self, Document, TEMPOS};
 use intavolatura_core::musicxml;
 use intavolatura_core::{
     BassLine, BassNote, DEFAULT_TEMPO, Duration, Editor, Figurings, Instrument, Key, Letter,
-    NoteValue, Pitch, Realization, Settings, Source, TimeSignature, Tuning, realize, schedule,
-    seconds, ticks_at, timing,
+    NoteValue, Pitch, Realization, Settings, Source, TimeSignature, Tuning, chart_shape, realize,
+    schedule, seconds, ticks_at, timing,
 };
 
 use crate::audio::Strike;
@@ -377,7 +377,11 @@ impl App {
             NoteValue::Eighth => "eighth",
             NoteValue::Sixteenth => "sixteenth",
         };
-        let dotted = if note.duration.dotted { "dotted " } else { "" };
+        let dotted = match (note.duration.dotted, note.duration.triplet) {
+            (true, _) => "dotted ",
+            (_, true) => "triplet ",
+            _ => "",
+        };
         if note.rest {
             return format!("{dotted}{value} rest · click the staff or press R for a note");
         }
@@ -393,6 +397,9 @@ impl App {
                         format!("{}/{}", i + 1, realization.candidates.len())
                     });
                 let pinned = if note.pin.is_some() { ", pinned" } else { "" };
+                let chart = chart_shape(&shown)
+                    .filter(|_| self.instrument.is_strummed())
+                    .map_or(String::new(), |c| format!(", chart {}", c.name));
                 // Each part's notes; a suspension's parts joined by an arrow.
                 let parts: Vec<String> = realization
                     .parts
@@ -403,7 +410,7 @@ impl App {
                         notes.join(" ")
                     })
                     .collect();
-                format!("fingering {position}{pinned}: {}", parts.join(" → "))
+                format!("fingering {position}{pinned}{chart}: {}", parts.join(" → "))
             }
         };
         let figuring = if figuring.is_empty() {
@@ -476,6 +483,15 @@ impl App {
                 let current = self.current_duration();
                 self.set_duration(Duration {
                     dotted: !current.dotted,
+                    triplet: false,
+                    ..current
+                });
+            }
+            (Input::Char('/'), _) => {
+                let current = self.current_duration();
+                self.set_duration(Duration {
+                    dotted: false,
+                    triplet: !current.triplet,
                     ..current
                 });
             }
@@ -508,8 +524,17 @@ impl App {
 
         let position = view::bass_staff_position(y).clamp(LOWEST_CLICK, HIGHEST_CLICK);
         let letter = Letter::from_index(position);
-        let pitch =
-            Pitch::from_staff_position(position, self.line().key().signature_accidental(letter));
+        // A click spells in the key of the note it lands on or inserts before.
+        let count = self.line().notes().len();
+        let at = match hit {
+            ColumnHit::Column(i) | ColumnHit::Insert(i) => i.min(count.saturating_sub(1)),
+        };
+        let key = if count == 0 {
+            self.line().key()
+        } else {
+            self.line().key_at(at)
+        };
+        let pitch = Pitch::from_staff_position(position, key.signature_accidental(letter));
         match hit {
             ColumnHit::Column(i) => {
                 self.selected = Some(i);
@@ -577,6 +602,19 @@ impl App {
         }
     }
 
+    /// Starts a new key at the selected note, or removes it.
+    pub fn set_key_change(&mut self, key: Option<Key>) {
+        if let Some(i) = self.selected {
+            self.edit(|e| e.set_key_change(i, key));
+        }
+    }
+
+    /// The key in force at the selected note, or the line's.
+    pub fn current_key(&self) -> Key {
+        self.selected
+            .map_or(self.line().key(), |i| self.line().key_at(i))
+    }
+
     /// Sets the upbeat: a short first bar of this length, or none.
     pub fn set_upbeat(&mut self, upbeat: Option<Duration>) {
         self.edit(|e| e.set_upbeat(upbeat));
@@ -603,21 +641,24 @@ impl App {
 
     /// Recomputes only the realizations whose note or key changed.
     fn update_realizations(&mut self) {
-        let key = self.line().key();
-        if self.tuned_for != key {
-            self.tuned = self.settings.tune(&self.instrument, key);
-            self.tuned_for = key;
+        // The instrument stays tuned to the line's first key.
+        let first = self.line().key();
+        if self.tuned_for != first {
+            self.tuned = self.settings.tune(&self.instrument, first);
+            self.tuned_for = first;
+            self.realizations.clear();
         }
+        let keys = self.line().keys();
         let notes = self.editor.line().notes();
         self.realizations.truncate(notes.len());
         for (i, note) in notes.iter().enumerate() {
             let fresh = self
                 .realizations
                 .get(i)
-                .is_some_and(|(n, k, _)| n == note && *k == key);
+                .is_some_and(|(n, k, _)| n == note && *k == keys[i]);
             if !fresh {
-                let r = realize(note, key, &self.tuned, &self.settings);
-                let entry = (note.clone(), key, r);
+                let r = realize(note, keys[i], &self.tuned, &self.settings);
+                let entry = (note.clone(), keys[i], r);
                 match self.realizations.get_mut(i) {
                     Some(slot) => *slot = entry,
                     None => self.realizations.push(entry),
@@ -656,6 +697,28 @@ mod tests {
             .collect();
         assert_eq!(pitches, ["Bb2", "D3"]);
         assert_eq!(app.selected, Some(1));
+    }
+
+    #[test]
+    fn clicks_spell_in_the_key_of_the_note_they_land_on() {
+        let mut app = app();
+        app.click(app.columns().center(0), y(22));
+        app.click(app.columns().center(1), y(22));
+        app.selected = Some(1);
+        app.set_key_change(Some("G major".parse().unwrap()));
+        assert_eq!(app.current_key().to_string(), "G major");
+        // F is sharp in G major, natural in D minor.
+        app.click(app.columns().center(1), y(24));
+        app.click(app.columns().center(0), y(24));
+        let pitches: Vec<String> = app
+            .line()
+            .notes()
+            .iter()
+            .map(|n| n.pitch.to_string())
+            .collect();
+        assert_eq!(pitches[0], "F3");
+        assert_eq!(pitches[1], "F#3");
+        assert!(app.line().notes()[1].key_change.is_some());
     }
 
     #[test]
@@ -798,7 +861,7 @@ mod tests {
         app.tempo = 60;
         app.selected = Some(1);
         let playback = app.playback();
-        assert_eq!(playback.from, 8);
+        assert_eq!(playback.from, 24);
         assert_eq!(playback.strikes[0].seconds, 0.0);
         assert!((playback.end - 2.0).abs() < 1e-4);
         assert!(
@@ -807,9 +870,9 @@ mod tests {
                 .windows(2)
                 .all(|w| w[0].seconds <= w[1].seconds)
         );
-        assert_eq!(app.note_at(8, 0.5), Some(1));
-        assert_eq!(app.note_at(8, 1.5), Some(2));
-        assert_eq!(app.note_at(8, 2.5), None);
+        assert_eq!(app.note_at(24, 0.5), Some(1));
+        assert_eq!(app.note_at(24, 1.5), Some(2));
+        assert_eq!(app.note_at(24, 2.5), None);
         app.tempo = 90;
         assert!(!app.is_modified() || app.tempo != app.saved_tempo);
     }

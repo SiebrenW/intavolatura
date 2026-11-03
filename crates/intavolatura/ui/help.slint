@@ -96,6 +96,20 @@ export component ShortcutsPanel inherits Rectangle {
             }
 
             Row {
+                keys: "/";
+                action: "Make the duration a triplet (three in the time of two) or plain";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
+                keys: "K";
+                action: "Start a new key at the note (or remove one)";
+                ink: root.ink;
+                muted: root.muted;
+            }
+
+            Row {
                 keys: "T";
                 action: "Start a new time signature at the note (or remove one)";
                 ink: root.ink;

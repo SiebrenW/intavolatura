@@ -2,12 +2,13 @@
 //! sound at.
 
 use crate::bass_line::BassLine;
+use crate::duration::Duration;
 use crate::instrument::Instrument;
 use crate::realization::Realization;
 use crate::timing::timing;
 
 /// Ticks in a quarter note (see `duration::WHOLE`).
-const QUARTER_TICKS: f32 = 8.0;
+const QUARTER_TICKS: f32 = Duration::QUARTER.ticks() as f32;
 
 /// Quarter notes a minute when a file sets no tempo.
 pub const DEFAULT_TEMPO: u16 = 72;
@@ -156,9 +157,9 @@ mod tests {
 
     #[test]
     fn ticks_and_seconds_agree() {
-        assert!((seconds(8, 60.0) - 1.0).abs() < 1e-6);
-        assert!((seconds(32, 120.0) - 2.0).abs() < 1e-6);
-        assert_eq!(ticks_at(seconds(24, 90.0) + 0.001, 90.0), 24);
+        assert!((seconds(24, 60.0) - 1.0).abs() < 1e-6);
+        assert!((seconds(96, 120.0) - 2.0).abs() < 1e-6);
+        assert_eq!(ticks_at(seconds(72, 90.0) + 0.001, 90.0), 72);
     }
 
     #[test]
@@ -171,7 +172,7 @@ mod tests {
         assert!(first.iter().all(|p| p.start == 0));
         assert!(first.windows(2).all(|w| w[0].semitones <= w[1].semitones));
         assert_eq!(first[0].semitones % 12, 0, "the bass is a C");
-        assert!(played.iter().filter(|p| p.note == 1).all(|p| p.start == 8));
+        assert!(played.iter().filter(|p| p.note == 1).all(|p| p.start == 24));
     }
 
     #[test]
@@ -195,6 +196,6 @@ mod tests {
         let (instrument, realizations) = realized(&line);
         let played = schedule(&line, &realizations, &instrument, Source::Realization);
         assert!(played.iter().all(|p| p.note != 1));
-        assert!(played.iter().any(|p| p.note == 2 && p.start == 16));
+        assert!(played.iter().any(|p| p.note == 2 && p.start == 48));
     }
 }

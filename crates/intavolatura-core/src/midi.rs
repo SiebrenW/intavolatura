@@ -336,6 +336,7 @@ pub fn import(bytes: &[u8], id: &str) -> Result<Import, String> {
             starts: &starts,
             numbers: &numbers,
             time_changes: &meters,
+            key_changes: &[],
             key: Some(key.unwrap_or_else(|| "C major".parse().expect("valid key"))),
             time: Some(time),
             implicit_first: false,

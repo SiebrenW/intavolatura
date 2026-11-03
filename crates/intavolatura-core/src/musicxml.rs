@@ -2,7 +2,7 @@
 //!
 //! Export writes a partwise MusicXML 4.0 score: the figured bass as one part
 //! and, optionally, the realization as a second part on a grand staff.
-//! Durations use 8 divisions per quarter, so ticks are written unchanged.
+//! Durations use 24 divisions per quarter, so ticks are written unchanged.
 //!
 //! Import reads the lowest sounding note of one part, or of all parts, as a
 //! bass line with its figures, and reports everything it had to change to fit the app's model.
@@ -175,6 +175,12 @@ fn write_part(out: &mut String, line: &BassLine, id: &str, staves: &[Vec<Event<'
         });
     }
     let first = if bars[0].upbeat { 0 } else { 1 };
+    let key_changes: Vec<(u32, Key)> = line
+        .notes()
+        .iter()
+        .zip(line.placements())
+        .filter_map(|(n, p)| n.key_change.map(|k| (p.start, k)))
+        .collect();
 
     let _ = writeln!(out, "  <part id=\"{id}\">");
     for (m, bar) in bars.iter().enumerate() {
@@ -196,9 +202,16 @@ fn write_part(out: &mut String, line: &BassLine, id: &str, staves: &[Vec<Event<'
                     continue;
                 }
                 if start == event.start {
+                    if s == 0
+                        && let Some(&(_, key)) = key_changes.iter().find(|(at, _)| *at == start)
+                    {
+                        out.push_str("      <attributes>");
+                        write_key(out, key);
+                        out.push_str("</attributes>\n");
+                    }
                     write_figured_bass(out, event);
                 }
-                let pieces = Duration::pieces(stop - start);
+                let pieces = Duration::pieces_on_grid(stop - start);
                 for (j, piece) in pieces.iter().enumerate() {
                     let first = start == event.start && j == 0;
                     let last = stop == event.start + event.ticks && j == pieces.len() - 1;
@@ -217,21 +230,13 @@ fn write_part(out: &mut String, line: &BassLine, id: &str, staves: &[Vec<Event<'
 }
 
 fn write_attributes(out: &mut String, line: &BassLine, grand: bool) {
-    let key = line.key();
     let time = line.time();
-    let mode = match key.mode() {
-        Mode::Major => "major",
-        Mode::Minor => "minor",
-    };
 
     out.push_str("      <attributes>\n");
     let _ = writeln!(out, "        <divisions>{DIVISIONS}</divisions>");
-    let _ = writeln!(
-        out,
-        "        <key><fifths>{}</fifths><mode>{mode}</mode></key>",
-        key.signature()
-    );
     out.push_str("        ");
+    write_key(out, line.key());
+    out.push_str("\n        ");
     write_time(out, time);
     out.push('\n');
     if grand {
@@ -242,6 +247,18 @@ fn write_attributes(out: &mut String, line: &BassLine, grand: bool) {
         out.push_str("        <clef><sign>F</sign><line>4</line></clef>\n");
     }
     out.push_str("      </attributes>\n");
+}
+
+fn write_key(out: &mut String, key: Key) {
+    let mode = match key.mode() {
+        Mode::Major => "major",
+        Mode::Minor => "minor",
+    };
+    let _ = write!(
+        out,
+        "<key><fifths>{}</fifths><mode>{mode}</mode></key>",
+        key.signature()
+    );
 }
 
 fn write_time(out: &mut String, time: TimeSignature) {
@@ -305,6 +322,11 @@ fn write_notes(
         let _ = write!(out, "<voice>{voice}</voice><type>{kind}</type>");
         if piece.dotted {
             out.push_str("<dot/>");
+        }
+        if piece.triplet {
+            out.push_str(
+                "<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>",
+            );
         }
         if let Some(staff) = staff {
             let _ = write!(out, "<staff>{staff}</staff>");
@@ -520,6 +542,8 @@ struct PartRead {
     time: Option<TimeSignature>,
     /// Later meters, from the measure that starts them.
     time_changes: Vec<(usize, TimeSignature)>,
+    /// Later keys, from the measure and the ticks into it where they start.
+    key_changes: Vec<(usize, f64, Key)>,
     graces: usize,
 }
 
@@ -532,6 +556,7 @@ fn read_part(part: roxmltree::Node<'_, '_>, changes: &mut Vec<String>) -> PartRe
     let mut divisions = 1.0f64;
     let mut octave_shift = 0i8;
     let mut current_time = TimeSignature::COMMON;
+    let mut current_key: Option<Key> = None;
     // Notes waiting for the end of a tie, by voice and pitch.
     let mut open: HashMap<(String, i16), usize> = HashMap::new();
 
@@ -560,13 +585,22 @@ fn read_part(part: roxmltree::Node<'_, '_>, changes: &mut Vec<String>) -> PartRe
                     if let Some(k) = child(node, "key") {
                         let found = read_key(k);
                         match (read.key, found) {
-                            (None, Some(found)) => read.key = Some(found),
+                            (None, Some(found)) => {
+                                read.key = Some(found);
+                                current_key = Some(found);
+                            }
                             (None, None) => {
                                 changes.push("The key could not be read; using C major.".into());
                                 read.key = Some("C major".parse().expect("valid key"));
+                                current_key = read.key;
                             }
-                            (Some(old), new) if new != Some(old) => changes.push(format!(
-                                "Bar {bar} changes key; the app keeps one key, so it stays {old}."
+                            // A later key starts where it is written.
+                            (Some(_), Some(found)) if Some(found) != current_key => {
+                                read.key_changes.push((m, pos, found));
+                                current_key = Some(found);
+                            }
+                            (Some(_), None) => changes.push(format!(
+                                "Bar {bar}: a key could not be read; the key stays as it was."
                             )),
                             _ => {}
                         }
@@ -766,6 +800,7 @@ pub fn import(xml: &str, id: &str) -> Result<Import, String> {
             starts: &starts,
             numbers: &first.numbers,
             time_changes: &first.time_changes,
+            key_changes: &first.key_changes,
             key: first.key,
             time: first.time,
             implicit_first: first.implicit_first,
@@ -862,7 +897,7 @@ mod tests {
         assert!(xml.contains("<work-title>Test &amp; &lt;more&gt;</work-title>"));
         assert!(xml.contains("<fifths>-1</fifths><mode>minor</mode>"));
         assert!(xml.contains("<time><beats>3</beats><beat-type>2</beat-type></time>"));
-        assert!(xml.contains("<divisions>8</divisions>"));
+        assert!(xml.contains("<divisions>24</divisions>"));
         assert!(!xml.contains("P2"));
         // C#3 with a sharp 6.
         assert!(xml.contains("<step>C</step><alter>1</alter><octave>3</octave>"));
@@ -872,14 +907,14 @@ mod tests {
         // The suspension: two figured-bass elements of a half note each,
         // the second a lone sharp.
         assert!(xml.contains(
-            "<figure-number>4</figure-number></figure>\n        <duration>16</duration>"
+            "<figure-number>4</figure-number></figure>\n        <duration>48</duration>"
         ));
         assert!(
             xml.contains(
-                "<figure><prefix>sharp</prefix></figure>\n        <duration>16</duration>"
+                "<figure><prefix>sharp</prefix></figure>\n        <duration>48</duration>"
             )
         );
-        assert!(xml.contains("<note><rest/><duration>8</duration>"));
+        assert!(xml.contains("<note><rest/><duration>24</duration>"));
     }
 
     #[test]
@@ -890,19 +925,19 @@ mod tests {
         let bars: Vec<&str> = xml.split("<measure number=").collect();
         assert_eq!(bars.len(), 1 + 3);
         assert!(bars[1].contains(
-            "<step>A</step><octave>2</octave></pitch><duration>16</duration><tie type=\"start\"/>"
+            "<step>A</step><octave>2</octave></pitch><duration>48</duration><tie type=\"start\"/>"
         ));
         assert!(bars[2].starts_with("\"2\">"));
         assert!(bars[2].contains(
-            "<step>A</step><octave>2</octave></pitch><duration>16</duration><tie type=\"stop\"/>"
+            "<step>A</step><octave>2</octave></pitch><duration>48</duration><tie type=\"stop\"/>"
         ));
         // The dotted whole D2 (48 ticks) starts after beat 2 of bar 2: 32
         // ticks there, tied to 16 in bar 3.
         assert!(bars[2].contains(
-            "<step>D</step><octave>2</octave></pitch><duration>32</duration><tie type=\"start\"/>"
+            "<step>D</step><octave>2</octave></pitch><duration>96</duration><tie type=\"start\"/>"
         ));
         assert!(bars[3].contains(
-            "<step>D</step><octave>2</octave></pitch><duration>16</duration><tie type=\"stop\"/>"
+            "<step>D</step><octave>2</octave></pitch><duration>48</duration><tie type=\"stop\"/>"
         ));
     }
 
@@ -954,14 +989,29 @@ mod tests {
     #[test]
     fn lengths_split_into_note_values() {
         let ticks = |n: u32| {
-            Duration::pieces(n)
+            Duration::pieces_on_grid(n)
                 .iter()
                 .map(|d| d.to_string())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(ticks(20), ["2", "8"]);
-        assert_eq!(ticks(48), ["1."]);
-        assert_eq!(ticks(12), ["4."]);
+        assert_eq!(ticks(60), ["2", "8"]);
+        assert_eq!(ticks(144), ["1."]);
+        assert_eq!(ticks(36), ["4."]);
+        assert_eq!(ticks(24), ["4"]);
+        assert_eq!(ticks(8), ["8t"]);
+        assert_eq!(ticks(40), ["2t", "8t"]);
+    }
+
+    #[test]
+    fn key_changes_export_and_import() {
+        let text = "intavolatura 1\nkey: C major\ntime: 4/4\ninstrument: theorbo-a-14\n\nC3 1\nG2 1 | | key G major\nD3 2\nA2 2 | | key E minor\n";
+        let line = file_format::read(text).unwrap().line;
+        let xml = export(&line, None, "t");
+        assert_eq!(xml.matches("<fifths>").count(), 3);
+        let back = import(&xml, "P1").unwrap().document.line;
+        assert_eq!(back.key().to_string(), "C major");
+        let keys: Vec<String> = back.keys().iter().map(|k| k.to_string()).collect();
+        assert_eq!(keys, ["C major", "G major", "G major", "E minor"]);
     }
 
     #[test]
@@ -1051,12 +1101,7 @@ mod tests {
         // The implicit first measure (a quarter) is now the upbeat.
         assert_eq!(line.upbeat().map(|d| d.to_string()), Some("4".to_string()));
         let text = imported.changes.join("\n");
-        for expected in [
-            "changes key",
-            "notes above the bass",
-            "grace",
-            "not supported",
-        ] {
+        for expected in ["notes above the bass", "grace", "not supported"] {
             assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
         }
     }
@@ -1129,7 +1174,7 @@ mod tests {
     }
 
     #[test]
-    fn triplets_keep_their_bar_and_are_reported() {
+    fn triplets_are_kept() {
         let xml = r#"<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>B</part-name></score-part></part-list>
@@ -1144,21 +1189,17 @@ mod tests {
   </part>
 </score-partwise>"#;
         let imported = import(xml, "P1").unwrap();
-        let ticks: u32 = imported
+        let notes: Vec<String> = imported
             .document
             .line
             .notes()
             .iter()
-            .map(|n| n.duration.ticks())
-            .sum();
-        // Two 2/4 bars, however the triplet was rounded.
-        assert_eq!(ticks, 32);
-        assert!(
-            imported
-                .changes
-                .iter()
-                .any(|c| c.contains("no matching note value"))
-        );
+            .map(|n| n.duration.to_string())
+            .collect();
+        assert_eq!(notes, ["8t", "8t", "8t", "4", "2"]);
+        assert!(imported.changes.is_empty(), "{:?}", imported.changes);
+        let xml = export(&imported.document.line, None, "t");
+        assert!(xml.contains("<time-modification><actual-notes>3</actual-notes>"));
     }
 
     #[test]
@@ -1224,7 +1265,7 @@ mod tests {
         let text = "intavolatura 1\nkey: C major\ntime: 3/4\ninstrument: theorbo-a-14\n\nC3 2 | 7:4.-6:8\nG2 4 | 4-3\n";
         let line = document(text);
         let xml = export(&line, None, "t");
-        assert!(xml.contains("<duration>12</duration>\n      </figured-bass>"));
+        assert!(xml.contains("<duration>36</duration>\n      </figured-bass>"));
         let back = import(&xml, "P1").unwrap();
         assert!(back.changes.is_empty(), "{:?}", back.changes);
         let figurings: Vec<String> = back

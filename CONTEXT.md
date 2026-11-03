@@ -11,10 +11,10 @@ The written note the user enters; the lowest sounding note of the chord, from wh
 _Avoid_: Root (for the entered note)
 
 **Key**:
-The single major or minor key of a bass line, shown as its key signature; figures are read as intervals within it unless an accidental says otherwise. Modulations appear only as accidentals.
+The major or minor key of a bass line, shown as its key signature; figures are read as intervals within it unless an accidental says otherwise. A bass line has a first key and may start a new one at any note (a **key change**, drawn with naturals for what no longer applies); the instrument stays tuned to the first key. Short modulations may still appear only as accidentals.
 
 **Duration**:
-How long a bass note sounds, as a note value (whole, half, quarter, eighth, sixteenth), optionally dotted.
+How long a bass note sounds, as a note value (whole, half, quarter, eighth, sixteenth), optionally dotted or a **triplet** (two thirds of its length, three in the time of two; a bracket with a 3 is drawn over each three consecutive triplet notes).
 _Avoid_: Length, rhythm (for a single note)
 
 **Rest**:
@@ -61,6 +61,10 @@ _Avoid_: Realization (for the notes themselves)
 **Fingering**:
 A course and fret (or open diapason) for every note of a chord on a given instrument. It determines the voicing; several fingerings can share one voicing.
 _Avoid_: Shape, grip, position
+
+**Chart shape**:
+A fingering of the baroque guitar that is a common guitar chord (A–G, minor, 7, maj7, m7; open and barré shapes as printed) on its five upper strings, optionally without its lowest courses. Ranked ahead of other candidates, and complete even with courses muted. Roots the chart lacks (F♯, B♭) get no help from it.
+_Avoid_: Alfabeto (a different, historical chart)
 
 **Candidate fingering**:
 A fingering of a chord that is playable on the current instrument and contains the notes the figuring requires; candidates are ranked by how good the app judges them to be.

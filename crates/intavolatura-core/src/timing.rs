@@ -135,7 +135,7 @@ pub fn timing(line: &BassLine) -> Timing {
             while remaining > 0 {
                 let bar_end = bar.start + bar.length;
                 let segment = remaining.min(bar_end - position);
-                for duration in Duration::pieces(segment) {
+                for duration in Duration::pieces_of(segment, note.duration.triplet) {
                     slices.push(Slice {
                         start: position,
                         duration,
@@ -192,7 +192,7 @@ fn bass_slices(slices: &[Slice]) -> Vec<Slice> {
             let start = group[0].start;
             let ticks: u32 = group.iter().map(|s| s.duration.ticks()).sum();
             let mut position = start;
-            for duration in Duration::pieces(ticks) {
+            for duration in Duration::pieces_of(ticks, group[0].duration.triplet) {
                 out.push(Slice {
                     start: position,
                     duration,
@@ -255,7 +255,7 @@ mod tests {
         assert!(t.notes[2].slices[0].bar_line_after);
         assert_eq!(t.notes[1].bass, t.notes[1].slices);
         assert_eq!(t.bars.len(), 2);
-        assert_eq!(t.bars[1].start, 32);
+        assert_eq!(t.bars[1].start, 96);
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
         // then a quarter… cut where bar lines fall.
         let t = timing(&line("C3 4.\nD3 2.\n", "4/4"));
         let total: u32 = t.notes[1].slices.iter().map(|s| s.duration.ticks()).sum();
-        assert_eq!(total, 24);
+        assert_eq!(total, 72);
         assert_eq!(
             t.notes[1]
                 .slices
@@ -303,10 +303,10 @@ mod tests {
     fn an_upbeat_is_a_short_first_bar() {
         let text = "intavolatura 1\nkey: C major\ntime: 3/4\nupbeat: 4\ninstrument: theorbo-a-14\n\nG2 4\nC3 2\nE3 4\n";
         let t = timing(&file_format::read(text).unwrap().line);
-        assert!(t.bars[0].upbeat && t.bars[0].length == 8);
+        assert!(t.bars[0].upbeat && t.bars[0].length == 24);
         assert!(t.notes[0].slices[0].bar_line_after);
         assert!(t.notes[2].slices[0].bar_line_after);
-        assert_eq!(t.bars[1].start, 8);
+        assert_eq!(t.bars[1].start, 24);
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
         // A 4/4 bar, two full 3/4 bars, then 4/4 again.
         assert_eq!(
             lengths,
-            [(32, false), (24, false), (24, false), (32, false)]
+            [(96, false), (72, false), (72, false), (96, false)]
         );
         assert!(t.notes.iter().all(|n| !n.warning));
 
@@ -326,7 +326,7 @@ mod tests {
             C3 2\nD3 2. | | time 3/4\n";
         let t = timing(&file_format::read(text).unwrap().line);
         // The change comes after half a bar: that bar is cut short.
-        assert_eq!((t.bars[0].length, t.bars[0].incomplete), (16, true));
+        assert_eq!((t.bars[0].length, t.bars[0].incomplete), (48, true));
         assert!(t.notes[0].warning && !t.notes[1].warning);
         assert!(t.notes[0].slices[0].bar_line_after);
         assert_eq!(t.bars[1].time.to_string(), "3/4");
@@ -354,6 +354,23 @@ mod tests {
         let t = timing(&line("r 2.\nC3 2\n", "4/4"));
         assert_eq!(values(&t.notes[1]), ["4", "4"]);
         assert_eq!(t.bars.len(), 2);
-        assert_eq!(t.end(), 40);
+        assert_eq!(t.end(), 120);
+    }
+
+    #[test]
+    fn triplets_fill_two_thirds_and_split_into_triplet_values() {
+        // Three triplet quarters make a half note; 4/4 bar has 96 ticks.
+        let t = timing(&line("C3 4t\nD3 4t\nE3 4t\nF3 2\n", "4/4"));
+        assert_eq!(t.notes[2].start + t.notes[2].ticks, 48);
+        assert_eq!(t.bars.len(), 1);
+        assert!(t.notes[3].slices[0].bar_line_after);
+        // A triplet whole over a bar line is cut into triplet values.
+        let t = timing(&line("C3 2\nD3 1t\n", "4/4"));
+        let values: Vec<String> = t.notes[1]
+            .slices
+            .iter()
+            .map(|s| s.duration.to_string())
+            .collect();
+        assert_eq!(values, ["2t", "4t", "4t"]);
     }
 }

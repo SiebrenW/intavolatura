@@ -1,0 +1,12 @@
+{
+  "notes": [
+    {
+      "id": 0,
+      "error": "unreadable figuring \"6x\": invalid character 'x'"
+    },
+    {
+      "id": 1,
+      "error": "no note has tonal pitch class 99"
+    }
+  ]
+}

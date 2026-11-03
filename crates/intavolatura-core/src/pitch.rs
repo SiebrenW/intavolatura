@@ -159,6 +159,21 @@ impl NoteName {
     pub const fn fifths(self) -> i8 {
         self.letter.fifths() + 7 * self.accidental.semitones()
     }
+
+    /// The note name at a position on the circle of fifths (C = 0, G = 1,
+    /// F = -1, F# = 6), if it needs at most a double sharp or flat.
+    pub fn from_fifths(fifths: i8) -> Option<NoteName> {
+        // F is the lowest natural at -1; each step of seven adds a sharp.
+        let from_f = fifths.checked_add(1)?;
+        let letter = Letter::ALL
+            .into_iter()
+            .find(|l| l.fifths() + 1 == from_f.rem_euclid(7))
+            .expect("every residue is a letter");
+        Some(NoteName::new(
+            letter,
+            Accidental::new(from_f.div_euclid(7))?,
+        ))
+    }
 }
 
 impl fmt::Display for NoteName {
@@ -223,6 +238,17 @@ impl Pitch {
 
     pub const fn with_accidental(self, accidental: Accidental) -> Pitch {
         Pitch::new(self.name.letter, accidental, self.octave)
+    }
+
+    /// The pitch spelled `name` that sounds at `semitones` (the MIDI
+    /// number): B# at 60 is B#3.
+    pub const fn spelled(name: NoteName, semitones: i16) -> Pitch {
+        let natural =
+            semitones - name.letter.semitones() as i16 - name.accidental.semitones() as i16;
+        Pitch {
+            name,
+            octave: (natural.div_euclid(12) - 1) as i8,
+        }
     }
 }
 

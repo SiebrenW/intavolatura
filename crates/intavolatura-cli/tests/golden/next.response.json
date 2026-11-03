@@ -1,0 +1,94 @@
+{
+  "notes": [
+    {
+      "id": 0,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            },
+            {
+              "string": 2,
+              "fret": 6,
+              "pitch": 65,
+              "tpc": 13,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 1,
+              "fret": 1,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

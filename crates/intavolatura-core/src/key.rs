@@ -33,6 +33,17 @@ impl Key {
         }
     }
 
+    /// The major or minor key with this many sharps (positive) or flats
+    /// (negative), if at most seven.
+    pub fn from_signature(signature: i8, mode: Mode) -> Option<Key> {
+        if signature.abs() > 7 {
+            return None;
+        }
+        let offset = if mode == Mode::Minor { 3 } else { 0 };
+        let tonic = NoteName::from_fifths(signature + offset)?;
+        Some(Key { tonic, mode })
+    }
+
     pub const fn tonic(self) -> NoteName {
         self.tonic
     }
@@ -78,11 +89,8 @@ impl Key {
     /// with each major key followed by its relative minor.
     pub fn all() -> impl Iterator<Item = Key> {
         (-7i8..=7).flat_map(|signature| {
-            [Mode::Major, Mode::Minor].map(|mode| {
-                let offset = if mode == Mode::Minor { 3 } else { 0 };
-                let tonic = name_at_fifths(signature + offset);
-                Key { tonic, mode }
-            })
+            [Mode::Major, Mode::Minor]
+                .map(|mode| Key::from_signature(signature, mode).expect("at most seven"))
         })
     }
 }
@@ -124,18 +132,6 @@ impl fmt::Display for ParseKeyError {
 }
 
 impl Error for ParseKeyError {}
-
-/// The note name at a position on the circle of fifths (C = 0, G = 1, F = -1).
-fn name_at_fifths(fifths: i8) -> NoteName {
-    // F is the lowest natural at -1; each step of seven adds a sharp.
-    let from_f = fifths + 1;
-    let letter = Letter::ALL
-        .into_iter()
-        .find(|l| l.fifths() + 1 == from_f.rem_euclid(7))
-        .expect("every residue is a letter");
-    let accidental = Accidental::new(from_f.div_euclid(7)).expect("within double sharp");
-    NoteName::new(letter, accidental)
-}
 
 #[cfg(test)]
 mod tests {

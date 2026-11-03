@@ -1,0 +1,34 @@
+{
+  "notes": [
+    {
+      "id": 0,
+      "parts": [
+        {
+          "notes": [
+            {
+              "string": 4,
+              "fret": 0,
+              "pitch": 50,
+              "tpc": 16,
+              "struck": true
+            },
+            {
+              "string": 5,
+              "fret": 8,
+              "pitch": 53,
+              "tpc": 13,
+              "struck": true
+            },
+            {
+              "string": 0,
+              "fret": 0,
+              "pitch": 57,
+              "tpc": 17,
+              "struck": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

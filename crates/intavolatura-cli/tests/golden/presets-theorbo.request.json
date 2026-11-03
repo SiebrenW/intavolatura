@@ -1,0 +1,55 @@
+{
+ "command": "presets",
+ "strings": [
+  {
+   "pitch": 31,
+   "open": true
+  },
+  {
+   "pitch": 33,
+   "open": true
+  },
+  {
+   "pitch": 35,
+   "open": true
+  },
+  {
+   "pitch": 36,
+   "open": true
+  },
+  {
+   "pitch": 38,
+   "open": true
+  },
+  {
+   "pitch": 40,
+   "open": true
+  },
+  {
+   "pitch": 41,
+   "open": true
+  },
+  {
+   "pitch": 43,
+   "open": true
+  },
+  {
+   "pitch": 45
+  },
+  {
+   "pitch": 50
+  },
+  {
+   "pitch": 55
+  },
+  {
+   "pitch": 59
+  },
+  {
+   "pitch": 52
+  },
+  {
+   "pitch": 57
+  }
+ ]
+}

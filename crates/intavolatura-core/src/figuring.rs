@@ -605,14 +605,14 @@ mod tests {
     fn suspension_parts_can_carry_lengths() {
         let f = |s: &str| s.parse::<Figurings>().unwrap();
         let ticks = |s: &str, total: u32| f(s).part_ticks(total);
-        // Over a half note (16 ticks).
-        assert_eq!(ticks("7-6", 16), Some(vec![8, 8]));
-        assert_eq!(ticks("7:4.-6:8", 16), Some(vec![12, 4]));
-        assert_eq!(ticks("7:4.-6", 16), Some(vec![12, 4]));
-        assert_eq!(ticks("6 4:4-5 3:8-#:8", 16), Some(vec![8, 4, 4]));
-        assert_eq!(ticks("6 4:4-5 3-#", 16), Some(vec![8, 4, 4]));
+        // Over a half note (48 ticks).
+        assert_eq!(ticks("7-6", 48), Some(vec![24, 24]));
+        assert_eq!(ticks("7:4.-6:8", 48), Some(vec![36, 12]));
+        assert_eq!(ticks("7:4.-6", 48), Some(vec![36, 12]));
+        assert_eq!(ticks("6 4:4-5 3:8-#:8", 48), Some(vec![24, 12, 12]));
+        assert_eq!(ticks("6 4:4-5 3-#", 48), Some(vec![24, 12, 12]));
         // Too long, not filling, or not dividing.
-        assert_eq!(ticks("7:2-6", 16), None);
+        assert_eq!(ticks("7:2-6", 48), None);
         assert_eq!(ticks("7:4-6:8", 16), None);
         assert_eq!(ticks("7:16-6-5", 16), None);
         assert_eq!(f("7:4.-6:8").to_string(), "7:4.-6:8");

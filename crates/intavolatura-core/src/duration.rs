@@ -4,8 +4,9 @@ use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
-/// Ticks in a whole note; a dotted sixteenth is still a whole number of ticks.
-pub const WHOLE: u32 = 32;
+/// Ticks in a whole note; a dotted sixteenth and a triplet sixteenth are
+/// still a whole number of ticks.
+pub const WHOLE: u32 = 96;
 
 /// A plain note value, longest first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -51,11 +52,13 @@ impl NoteValue {
     }
 }
 
-/// How long a bass note sounds: a note value, optionally dotted.
+/// How long a bass note sounds: a note value, optionally dotted or a
+/// triplet (two thirds of its length; never both).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Duration {
     pub value: NoteValue,
     pub dotted: bool,
+    pub triplet: bool,
 }
 
 impl Duration {
@@ -65,6 +68,7 @@ impl Duration {
         Duration {
             value,
             dotted: false,
+            triplet: false,
         }
     }
 
@@ -72,25 +76,64 @@ impl Duration {
         Duration {
             value,
             dotted: true,
+            triplet: false,
+        }
+    }
+
+    pub const fn triplet(value: NoteValue) -> Duration {
+        Duration {
+            value,
+            dotted: false,
+            triplet: true,
         }
     }
 
     /// Length in ticks, [`WHOLE`] to a whole note.
     pub const fn ticks(self) -> u32 {
         let plain = WHOLE / self.value.denominator();
-        if self.dotted { plain * 3 / 2 } else { plain }
+        if self.dotted {
+            plain * 3 / 2
+        } else if self.triplet {
+            plain * 2 / 3
+        } else {
+            plain
+        }
     }
 
     /// Splits a length into note values, longest first, so that any
     /// stretch can be written: 20 ticks become a half and an eighth.
-    pub fn pieces(mut ticks: u32) -> Vec<Duration> {
+    pub fn pieces(ticks: u32) -> Vec<Duration> {
+        Duration::pieces_of(ticks, false)
+    }
+
+    /// Like [`Duration::pieces`], in triplet values for a length that
+    /// falls off the sixteenth grid, which only triplets do.
+    pub fn pieces_on_grid(ticks: u32) -> Vec<Duration> {
+        Duration::pieces_of(
+            ticks,
+            !ticks.is_multiple_of(Duration::new(NoteValue::Sixteenth).ticks()),
+        )
+    }
+
+    /// Like [`Duration::pieces`], in triplet values for a triplet.
+    pub fn pieces_of(mut ticks: u32, triplet: bool) -> Vec<Duration> {
         let mut out = Vec::new();
         while ticks > 0 {
             let piece = NoteValue::ALL
                 .into_iter()
-                .flat_map(|v| [Duration::dotted(v), Duration::new(v)])
+                .flat_map(|v| {
+                    if triplet {
+                        [Duration::triplet(v), Duration::triplet(v)]
+                    } else {
+                        [Duration::dotted(v), Duration::new(v)]
+                    }
+                })
                 .find(|d| d.ticks() <= ticks)
-                .unwrap_or(Duration::new(NoteValue::Sixteenth));
+                .unwrap_or(if triplet {
+                    Duration::triplet(NoteValue::Sixteenth)
+                } else {
+                    Duration::new(NoteValue::Sixteenth)
+                });
             out.push(piece);
             ticks = ticks.saturating_sub(piece.ticks());
         }
@@ -105,10 +148,10 @@ impl Duration {
             .flatten()
     }
 
-    /// The plain or dotted note value of exactly this length, if any.
+    /// The plain, dotted or triplet note value of exactly this length, if any.
     pub fn from_ticks(ticks: u32) -> Option<Duration> {
         NoteValue::ALL.into_iter().find_map(|v| {
-            [Duration::new(v), Duration::dotted(v)]
+            [Duration::new(v), Duration::dotted(v), Duration::triplet(v)]
                 .into_iter()
                 .find(|d| d.ticks() == ticks)
         })
@@ -122,11 +165,15 @@ impl Default for Duration {
 }
 
 impl fmt::Display for Duration {
-    /// The file form: `4` for a quarter, `2.` for a dotted half.
+    /// The file form: `4` for a quarter, `2.` for a dotted half, `8t` for a
+    /// triplet eighth.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.value.denominator())?;
         if self.dotted {
             f.write_str(".")?;
+        }
+        if self.triplet {
+            f.write_str("t")?;
         }
         Ok(())
     }
@@ -136,16 +183,21 @@ impl FromStr for Duration {
     type Err = ParseDurationError;
 
     fn from_str(s: &str) -> Result<Duration, ParseDurationError> {
-        let (number, dotted) = match s.strip_suffix('.') {
-            Some(number) => (number, true),
-            None => (s, false),
+        let (number, dotted, triplet) = match (s.strip_suffix('.'), s.strip_suffix('t')) {
+            (Some(number), _) => (number, true, false),
+            (_, Some(number)) => (number, false, true),
+            _ => (s, false, false),
         };
         let value = number
             .parse()
             .ok()
             .and_then(NoteValue::from_denominator)
             .ok_or(ParseDurationError)?;
-        Ok(Duration { value, dotted })
+        Ok(Duration {
+            value,
+            dotted,
+            triplet,
+        })
     }
 }
 
@@ -261,14 +313,16 @@ mod tests {
 
     #[test]
     fn durations_have_ticks_and_round_trip() {
-        assert_eq!(d("1").ticks(), 32);
-        assert_eq!(d("4").ticks(), 8);
-        assert_eq!(d("4.").ticks(), 12);
-        assert_eq!(d("16.").ticks(), 3);
-        for s in ["1", "2.", "4", "8", "16."] {
+        assert_eq!(d("1").ticks(), 96);
+        assert_eq!(d("4").ticks(), 24);
+        assert_eq!(d("4.").ticks(), 36);
+        assert_eq!(d("16.").ticks(), 9);
+        assert_eq!(d("8t").ticks(), 8);
+        assert_eq!(d("4t").ticks(), 16);
+        for s in ["1", "2.", "4", "8", "16.", "8t", "2t"] {
             assert_eq!(d(s).to_string(), s);
         }
-        for s in ["", "3", "4..", "x", "32"] {
+        for s in ["", "3", "4..", "x", "32", "4.t", "t"] {
             assert!(s.parse::<Duration>().is_err(), "{s:?}");
         }
     }
@@ -279,15 +333,18 @@ mod tests {
         assert_eq!(d("1").split(2), Some(d("2")));
         assert_eq!(d("2.").split(2), Some(d("4.")));
         assert_eq!(d("2.").split(3), Some(d("4")));
-        assert_eq!(d("4").split(3), None);
+        assert_eq!(d("4").split(3), Some(d("8t")));
+        assert_eq!(d("8").split(3), Some(d("16t")));
+        assert_eq!(d("8.").split(3), Some(d("16")));
+        assert_eq!(Duration::pieces_of(24, true), [d("4t"), d("8t")]);
     }
 
     #[test]
     fn time_signatures_parse_and_measure_bars() {
         let t = |s: &str| s.parse::<TimeSignature>().unwrap();
-        assert_eq!(t("4/4").bar_ticks(), 32);
-        assert_eq!(t("3/2").bar_ticks(), 48);
-        assert_eq!(t("6/8").bar_ticks(), 24);
+        assert_eq!(t("4/4").bar_ticks(), 96);
+        assert_eq!(t("3/2").bar_ticks(), 144);
+        assert_eq!(t("6/8").bar_ticks(), 72);
         assert_eq!(t("3/2").to_string(), "3/2");
         assert!("3/3".parse::<TimeSignature>().is_err());
         assert!("0/4".parse::<TimeSignature>().is_err());
@@ -302,6 +359,6 @@ mod tests {
         assert_eq!(ends, [false, false, true, false, false, true]);
         // The half note after the dotted half runs over the second bar line.
         assert_eq!(crosses, [false, false, false, false, true, false]);
-        assert_eq!(placed[3].start, 32);
+        assert_eq!(placed[3].start, 96);
     }
 }

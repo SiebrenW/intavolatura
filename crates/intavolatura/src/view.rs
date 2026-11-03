@@ -164,26 +164,24 @@ pub struct Columns {
 /// Width of a slice: grows with duration, less than in proportion (a whole
 /// note twice a quarter), never too narrow for a chord.
 fn slice_width(ticks: u32) -> f32 {
-    (COLUMN_WIDTH * (ticks as f32 / 8.0).sqrt()).max(MIN_PART_WIDTH)
+    (COLUMN_WIDTH * (ticks as f32 / Duration::QUARTER.ticks() as f32).sqrt()).max(MIN_PART_WIDTH)
 }
 
 impl Columns {
     /// Columns for notes cut into slices of these lengths in ticks.
     pub fn new(key: Key, notes: &[Vec<u32>]) -> Columns {
-        let notes: Vec<(Vec<u32>, bool)> = notes.iter().map(|n| (n.clone(), false)).collect();
-        Columns::with_meter_changes(key, &notes)
+        let notes: Vec<(Vec<u32>, f32)> = notes.iter().map(|n| (n.clone(), 0.0)).collect();
+        Columns::with_room(key, &notes)
     }
 
-    /// Columns as [`Columns::new`], where a note that starts a new time
-    /// signature gets room for it before its first slice.
-    pub fn with_meter_changes(key: Key, notes: &[(Vec<u32>, bool)]) -> Columns {
+    /// Columns as [`Columns::new`], where a note that starts a new time or
+    /// key signature gets the given room for it before its first slice.
+    pub fn with_room(key: Key, notes: &[(Vec<u32>, f32)]) -> Columns {
         let mut edges = vec![time_signature_x(key) + TIME_SIGNATURE_WIDTH];
         let mut slices = Vec::new();
-        for (lengths, meter_change) in notes {
-            let mut left = *edges.last().expect("never empty");
-            if *meter_change {
-                left += TIME_SIGNATURE_WIDTH;
-            }
+        for (lengths, room) in notes {
+            let left = *edges.last().expect("never empty") + room;
+            let mut left = left;
             let mut lefts = Vec::new();
             for &ticks in lengths {
                 lefts.push(left);
@@ -268,6 +266,28 @@ pub enum ColumnHit {
     Column(usize),
     /// Insert before this index; the count appends.
     Insert(usize),
+}
+
+/// The glyphs of a key signature drawn at a key change: naturals for what
+/// the old key had and the new one has not, then the new signature.
+fn key_change_glyphs(from: Key, to: Key) -> (usize, usize) {
+    let (old, new) = (from.signature(), to.signature());
+    let naturals = if old.signum() == new.signum() {
+        (old.unsigned_abs()).saturating_sub(new.unsigned_abs())
+    } else {
+        old.unsigned_abs()
+    };
+    (naturals as usize, new.unsigned_abs() as usize)
+}
+
+/// Room a key change takes before the note.
+fn key_change_room(from: Key, to: Key) -> f32 {
+    // Relative keys share a signature: nothing is drawn.
+    if from.signature() == to.signature() {
+        return 0.0;
+    }
+    let (naturals, new) = key_change_glyphs(from, to);
+    (naturals + new) as f32 * KEY_SIGNATURE_STEP + 8.0
 }
 
 /// Where the time signature starts, after the key signature.
@@ -356,11 +376,29 @@ pub fn scene(
     }
 
     let timing = timing(line);
+    let keys = line.keys();
     for (index, (note, time)) in line.notes().iter().zip(&timing.notes).enumerate() {
         let x_of = |slice: usize| columns.slice_x(index, slice);
+        let key = keys[index];
+        let mut x = columns.left(index) + 4.0;
+        if let Some(new) = note.key_change {
+            // A new key signature, drawn before the note on every staff.
+            let before = if index == 0 {
+                line.key()
+            } else {
+                keys[index - 1]
+            };
+            for (staff, top) in [
+                (&staff, BASS_TOP_POSITION),
+                (&treble, TREBLE_TOP_POSITION),
+                (&bass, BASS_TOP_POSITION),
+            ] {
+                staff.draw_signature_at(&mut scene, x, Some(before), new, top);
+            }
+            x += key_change_room(before, new);
+        }
         if let Some(time) = note.time_change {
             // A new time signature, drawn before the note on every staff.
-            let x = columns.left(index) + 4.0;
             for staff in [&staff, &treble, &bass] {
                 staff.draw_time_signature(&mut scene, x, time);
             }
@@ -497,7 +535,36 @@ pub fn scene(
             }
         }
     }
+    draw_triplet_brackets(&mut scene, line, &columns);
     scene
+}
+
+/// A bracket with a "3" over each group of three consecutive triplet notes
+/// (or the last notes of a run that is not a multiple of three).
+// shortcut: groups are counted by notes, not by length, so mixed triplet
+// values bracket as three notes; upgrade if mixed groups matter.
+fn draw_triplet_brackets(scene: &mut Scene, line: &BassLine, columns: &Columns) {
+    let y = BASS_STAFF_TOP - 2.0 * SPACE;
+    let mut run = Vec::new();
+    for (index, note) in line.notes().iter().enumerate() {
+        if note.duration.triplet {
+            run.push(index);
+        }
+        if !note.duration.triplet || run.len() == 3 || index + 1 == line.notes().len() {
+            if let (Some(&first), Some(&last)) = (run.first(), run.last()) {
+                let (from, to) = (columns.slice_x(first, 0), columns.slice_x(last, 0));
+                scene.bar(from, y, to - from, LINE);
+                scene.glyph(
+                    (from + to) / 2.0,
+                    y - 0.3 * SPACE,
+                    "\u{E883}",
+                    true,
+                    2.4 * SPACE,
+                );
+            }
+            run.clear();
+        }
+    }
 }
 
 /// Draws the glyphs from `first` on in the warning colour, if `warning`.
@@ -511,16 +578,26 @@ fn mark_warning(scene: &mut Scene, first: usize, warning: bool) {
 
 /// The columns for a bass line, sized by each note's slices.
 pub fn columns_for(line: &BassLine) -> Columns {
-    let notes: Vec<(Vec<u32>, bool)> = timing(line)
+    let mut key = line.key();
+    let notes: Vec<(Vec<u32>, f32)> = timing(line)
         .notes
         .iter()
         .zip(line.notes())
         .map(|(t, n)| {
             let lengths = t.slices.iter().map(|s| s.duration.ticks()).collect();
-            (lengths, n.time_change.is_some())
+            let mut room = if n.time_change.is_some() {
+                TIME_SIGNATURE_WIDTH
+            } else {
+                0.0
+            };
+            if let Some(new) = n.key_change {
+                room += key_change_room(key, new);
+                key = new;
+            }
+            (lengths, room)
         })
         .collect();
-    Columns::with_meter_changes(line.key(), &notes)
+    Columns::with_room(line.key(), &notes)
 }
 
 /// Extra room a dot takes after a notehead.
@@ -671,6 +748,20 @@ fn italian_number(n: usize) -> String {
         .collect()
 }
 
+/// The key signature glyphs of a system's first bar, on every staff.
+pub(crate) fn key_signature_glyphs(key: Key) -> Vec<Glyph> {
+    let mut scene = Scene::default();
+    for (top, top_position) in [
+        (BASS_STAFF_TOP, BASS_TOP_POSITION),
+        (TREBLE_STAFF_TOP, TREBLE_TOP_POSITION),
+        (VOICING_BASS_TOP, BASS_TOP_POSITION),
+    ] {
+        let staff = Staff { top, top_position };
+        staff.draw_key_signature(&mut scene, key, top_position);
+    }
+    scene.glyphs
+}
+
 /// A five-line staff, positioned by its top line.
 struct Staff {
     top: f32,
@@ -698,19 +789,45 @@ impl Staff {
     }
 
     fn draw_key_signature(&self, scene: &mut Scene, key: Key, top_position: i16) {
+        self.draw_signature_at(scene, KEY_SIGNATURE_X, None, key, top_position);
+    }
+
+    /// Draws a key signature from `x` on; after `from`, with naturals for
+    /// the accidentals that no longer apply.
+    fn draw_signature_at(
+        &self,
+        scene: &mut Scene,
+        x: f32,
+        from: Option<Key>,
+        key: Key,
+        top_position: i16,
+    ) {
         // Positions on the bass staff; the treble staff is two octaves higher.
         const SHARPS: [i16; 7] = [24, 21, 25, 22, 19, 23, 20];
         const FLATS: [i16; 7] = [20, 23, 19, 22, 18, 21, 17];
         let shift = top_position - BASS_TOP_POSITION;
+        let positions = |key: Key| if key.signature() > 0 { SHARPS } else { FLATS };
+        let mut x = x;
+        if from.is_some_and(|from| from.signature() == key.signature()) {
+            return;
+        }
+        if let Some(from) = from {
+            let (naturals, _) = key_change_glyphs(from, key);
+            let skip = from.signature().unsigned_abs() as usize - naturals;
+            for &position in positions(from).iter().skip(skip).take(naturals) {
+                scene.glyph(x, self.y(position + shift), "\u{E261}", true, MUSIC_SIZE);
+                x += KEY_SIGNATURE_STEP;
+            }
+        }
         let count = key.signature().unsigned_abs() as usize;
-        let (positions, glyph) = if key.signature() > 0 {
-            (&SHARPS, "\u{E262}")
+        let glyph = if key.signature() > 0 {
+            "\u{E262}"
         } else {
-            (&FLATS, "\u{E260}")
+            "\u{E260}"
         };
-        for (i, &position) in positions.iter().take(count).enumerate() {
-            let x = KEY_SIGNATURE_X + i as f32 * KEY_SIGNATURE_STEP;
+        for &position in positions(key).iter().take(count) {
             scene.glyph(x, self.y(position + shift), glyph, true, MUSIC_SIZE);
+            x += KEY_SIGNATURE_STEP;
         }
     }
 
@@ -999,8 +1116,34 @@ mod tests {
     }
 
     #[test]
+    fn a_key_change_gets_room_and_a_signature_on_every_staff() {
+        let line = |change: Option<Key>| {
+            let mut note = BassNote::new("C3".parse().unwrap());
+            note.key_change = change;
+            let notes = vec![BassNote::new("C3".parse().unwrap()), note];
+            BassLine::with_notes(key("C major"), Default::default(), notes)
+        };
+        let plain = columns_for(&line(None));
+        let changed = columns_for(&line(Some(key("A major"))));
+        assert!(changed.left(1) - plain.left(1) < 0.1);
+        assert!(
+            (changed.width_of(1)
+                - plain.width_of(1)
+                - key_change_room(key("C major"), key("A major")))
+            .abs()
+                < 0.1
+        );
+        // Relative keys share a signature and need no room.
+        assert_eq!(key_change_room(key("C major"), key("A minor")), 0.0);
+        // Back to no sharps: naturals for all three.
+        assert_eq!(key_change_glyphs(key("A major"), key("C major")), (3, 0));
+        assert_eq!(key_change_glyphs(key("A major"), key("E major")), (0, 4));
+        assert_eq!(key_change_glyphs(key("A major"), key("D major")), (1, 2));
+    }
+
+    #[test]
     fn clicks_map_to_columns_and_insert_points() {
-        let columns = Columns::new(key("C major"), &[vec![8], vec![8]]);
+        let columns = Columns::new(key("C major"), &[vec![24], vec![24]]);
         assert_eq!(columns.hit(0.0), ColumnHit::Insert(0));
         assert_eq!(columns.hit(columns.center(0)), ColumnHit::Column(0));
         assert_eq!(columns.hit(columns.center(1)), ColumnHit::Column(1));
@@ -1014,8 +1157,8 @@ mod tests {
     #[test]
     fn a_suspension_column_is_wider_with_one_part_per_figuring() {
         // A half note with two figurings: two quarter slices.
-        let columns = Columns::new(key("C major"), &[vec![8], vec![8, 8], vec![8]]);
-        assert!((columns.width_of(1) - 2.0 * slice_width(8)).abs() < 0.01);
+        let columns = Columns::new(key("C major"), &[vec![24], vec![24, 24], vec![24]]);
+        assert!((columns.width_of(1) - 2.0 * slice_width(24)).abs() < 0.01);
         let (first, second) = (columns.slice_x(1, 0), columns.slice_x(1, 1));
         assert!(columns.left(1) < first && first < second && second < columns.left(2));
         assert_eq!(columns.hit(second), ColumnHit::Column(1));
@@ -1025,7 +1168,7 @@ mod tests {
 
     #[test]
     fn longer_notes_get_wider_columns_but_less_than_in_proportion() {
-        let columns = Columns::new(key("C major"), &[vec![8], vec![32], vec![2]]);
+        let columns = Columns::new(key("C major"), &[vec![24], vec![96], vec![6]]);
         let close = |a: f32, b: f32| (a - b).abs() < 0.01;
         assert!(close(columns.width_of(0), COLUMN_WIDTH));
         assert!(close(columns.width_of(1), 2.0 * COLUMN_WIDTH));

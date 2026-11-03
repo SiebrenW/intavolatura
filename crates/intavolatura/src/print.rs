@@ -5,16 +5,31 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use flate2::{Compression, write::ZlibEncoder};
-use intavolatura_core::{BassLine, timing};
+use intavolatura_core::{BassLine, Key, timing};
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 use subsetter::GlyphRemapper;
 use ttf_parser::{Face, RawFace, Tag};
 
 use crate::view::{
-    self, BASS_ROW_BOTTOM, BASS_STAFF_TOP, Bar, Glyph, SPACE, Scene, TAB_BOTTOM, TAB_LINE, TAB_TOP,
-    TREBLE_STAFF_TOP, Tie, VOICING_BASS_TOP, columns_for, time_signature_x,
+    self, BASS_ROW_BOTTOM, BASS_STAFF_TOP, Bar, FIGURES_TOP, Glyph, SPACE, Scene, TAB_BOTTOM,
+    TAB_LINE, TAB_TOP, TREBLE_STAFF_TOP, Tie, VOICING_BASS_TOP, columns_for, time_signature_x,
 };
+
+/// How far the figures under the bass staff move up on paper; the editor
+/// leaves more room there than a printed page needs.
+const FIGURES_LIFT: f32 = 40.0;
+
+fn lifted(y: f32) -> f32 {
+    if (FIGURES_TOP - SPACE..BASS_ROW_BOTTOM).contains(&y) {
+        y - FIGURES_LIFT
+    } else {
+        y
+    }
+}
+
+/// Header glyphs right of this are the key signature, left of it the clef.
+const CLEF_END: f32 = 40.0;
 
 const BRAVURA: &[u8] = include_bytes!("../fonts/Bravura.otf");
 
@@ -176,7 +191,15 @@ pub fn layout(line: &BassLine, scene: &Scene, options: &PrintOptions) -> Vec<Pag
 
     let columns = columns_for(line);
     let first_body = columns.left(0);
-    let later_body = time_signature_x(line.key()) + 6.0;
+    let keys = line.keys();
+    // Later systems start with the signature of the key they start in.
+    let widest = keys
+        .iter()
+        .copied()
+        .chain([line.key()])
+        .max_by_key(|k| k.signature().unsigned_abs())
+        .expect("a key");
+    let later_body = time_signature_x(widest) + 6.0;
     let end = columns.left(columns.count());
 
     // Where a system may end: after any slice, preferably at a bar line.
@@ -246,7 +269,20 @@ pub fn layout(line: &BassLine, scene: &Scene, options: &PrintOptions) -> Vec<Pag
             .iter()
             .map(|&row| (row, Piece::default(), (0.0, 0.0)))
             .collect();
-        distribute(scene, &columns, span, number == 0, width, &mut pieces);
+        let header_key = (0..columns.count())
+            .rev()
+            .find(|&i| columns.left(i) < span.from - 0.5)
+            .map_or(line.key(), |i| keys[i]);
+        let header_key = (number > 0 && header_key != line.key()).then_some(header_key);
+        distribute(
+            scene,
+            &columns,
+            span,
+            number == 0,
+            header_key,
+            width,
+            &mut pieces,
+        );
         for (row, piece, extent) in &mut pieces {
             *extent = piece.extent(row.minimum());
         }
@@ -315,6 +351,7 @@ fn distribute(
     columns: &view::Columns,
     span: &Span,
     first: bool,
+    header_key: Option<Key>,
     width: f32,
     pieces: &mut [(Row, Piece, (f32, f32))],
 ) {
@@ -331,6 +368,10 @@ fn distribute(
             if !first && glyph.x >= time_x {
                 continue;
             }
+            // The first key's signature, when the system starts in another.
+            if header_key.is_some() && glyph.x > CLEF_END && glyph.x < time_x {
+                continue;
+            }
             glyph.x
         } else if glyph.x >= span.from && glyph.x < span.to {
             span.map(glyph.x)
@@ -338,8 +379,18 @@ fn distribute(
             continue;
         };
         put(glyph.y, &mut |p| {
-            p.glyphs.push(Glyph { x, ..glyph.clone() })
+            p.glyphs.push(Glyph {
+                x,
+                y: lifted(glyph.y),
+                ..glyph.clone()
+            })
         });
+    }
+
+    if let Some(key) = header_key {
+        for glyph in view::key_signature_glyphs(key) {
+            put(glyph.y, &mut |p| p.glyphs.push(glyph.clone()));
+        }
     }
 
     for bar in &scene.bars {
@@ -357,7 +408,12 @@ fn distribute(
         } else {
             continue;
         };
-        put(bar.y, &mut |p| p.bars.push(placed));
+        put(bar.y, &mut |p| {
+            p.bars.push(Bar {
+                y: lifted(placed.y),
+                ..placed
+            })
+        });
     }
 
     for tie in &scene.ties {
@@ -639,7 +695,10 @@ mod tests {
     }
 
     fn pages_for(count: usize, options: &PrintOptions) -> Vec<Page> {
-        let line = line_of(count);
+        layout_of(line_of(count), options)
+    }
+
+    fn layout_of(line: BassLine, options: &PrintOptions) -> Vec<Page> {
         let scene = view::scene(
             &line,
             &[],
@@ -670,6 +729,30 @@ mod tests {
                 assert!(glyph.y > 0.0 && glyph.y < h, "y {}", glyph.y);
             }
         }
+    }
+
+    #[test]
+    fn every_system_starts_in_the_key_it_is_in() {
+        let mut line = line_of(60);
+        let mut notes = line.notes().to_vec();
+        notes[4].key_change = Some("E major".parse().unwrap());
+        line = BassLine::with_notes(line.key(), Default::default(), notes);
+        let options = PrintOptions {
+            contents: Contents::WithBass,
+            ..PrintOptions::default()
+        };
+        let pages = layout_of(line, &options);
+        let count = |text: &str| {
+            pages
+                .iter()
+                .flat_map(|p| &p.scene.glyphs)
+                .filter(|g| g.text == text)
+                .count()
+        };
+        // The change is in the first system's body; each later system opens
+        // with the four sharps, and none with the key it started in.
+        assert!(count("\u{E062}") > 1);
+        assert_eq!(count("\u{E262}"), 4 * count("\u{E062}"));
     }
 
     #[test]

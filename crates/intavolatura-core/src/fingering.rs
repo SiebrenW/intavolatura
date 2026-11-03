@@ -2,7 +2,7 @@
 
 use crate::chord::Chord;
 use crate::instrument::{Instrument, MAX_COURSES};
-use crate::pitch::{NoteName, Pitch};
+use crate::pitch::Pitch;
 
 /// A course and fret for every note of a chord; unplayed courses are `None`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -55,16 +55,7 @@ impl Fingering {
             .map(|t| t.name)
             .find(|n| n.pitch_class() as i16 == semitones.rem_euclid(12))
             .expect("a fingering only sounds chord tones");
-        spell(name, semitones)
-    }
-}
-
-/// The pitch spelled `name` that sounds at `semitones`.
-fn spell(name: NoteName, semitones: i16) -> Pitch {
-    let natural = semitones - name.letter.semitones() as i16 - name.accidental.semitones() as i16;
-    Pitch {
-        name,
-        octave: (natural.div_euclid(12) - 1) as i8,
+        Pitch::spelled(name, semitones)
     }
 }
 

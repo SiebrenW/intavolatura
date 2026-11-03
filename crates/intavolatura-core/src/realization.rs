@@ -190,23 +190,29 @@ pub fn realize(
 }
 
 impl Realization {
-    /// The pin that selects the next (or previous) candidate, wrapping
-    /// around. Landing on the best candidate unpins, so the note follows
-    /// the ranking again.
-    pub fn cycle(&self, forward: bool) -> Option<Fingering> {
+    /// The candidate after (or before) `current`, wrapping around: the
+    /// fingering to show next. A fingering that is not among the candidates
+    /// (or none) steps to the best one. `None` when nothing is playable.
+    pub fn neighbour(&self, current: Option<Fingering>, forward: bool) -> Option<Fingering> {
         let len = self.candidates.len();
         if len == 0 {
             return None;
         }
-        let current = self
-            .shown
-            .and_then(|s| self.candidates.iter().position(|r| r.fingering == s));
-        let next = match (current, forward) {
+        let at = current.and_then(|c| self.candidates.iter().position(|r| r.fingering == c));
+        let next = match (at, forward) {
             (None, _) => 0,
             (Some(i), true) => (i + 1) % len,
             (Some(i), false) => (i + len - 1) % len,
         };
-        (next > 0).then(|| self.candidates[next].fingering)
+        Some(self.candidates[next].fingering)
+    }
+
+    /// The pin that selects the next (or previous) candidate, wrapping
+    /// around. Landing on the best candidate unpins, so the note follows
+    /// the ranking again.
+    pub fn cycle(&self, forward: bool) -> Option<Fingering> {
+        let next = self.neighbour(self.shown, forward)?;
+        (next != self.candidates[0].fingering).then_some(next)
     }
 }
 
@@ -324,6 +330,29 @@ mod tests {
         assert_eq!(r.cycle(false), Some(third));
         assert_eq!(realized(Some(third), &settings).cycle(true), None);
         assert_eq!(realized(Some(second), &settings).cycle(false), None);
+    }
+
+    #[test]
+    fn a_fingering_outside_the_candidates_steps_to_the_best() {
+        let fifth = realized(None, &Settings::default()).candidates[4].fingering;
+        let settings = Settings {
+            candidates_to_cycle: 3,
+            ..Settings::default()
+        };
+        let r = realized(Some(fifth), &settings);
+        let best = r.candidates[0].fingering;
+        assert_eq!(r.neighbour(Some(fifth), true), Some(best));
+        assert_eq!(r.neighbour(Some(fifth), false), Some(best));
+        assert_eq!(r.neighbour(None, true), Some(best));
+        // Inside the candidates it steps and wraps without unpinning.
+        assert_eq!(
+            r.neighbour(Some(r.candidates[2].fingering), true),
+            Some(best)
+        );
+        assert_eq!(
+            r.neighbour(Some(best), false),
+            Some(r.candidates[2].fingering)
+        );
     }
 
     #[test]

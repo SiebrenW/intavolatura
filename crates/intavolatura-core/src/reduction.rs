@@ -25,14 +25,21 @@ pub(crate) struct Layout<'a> {
     pub numbers: &'a [String],
     /// Later meters, from the measure that starts them.
     pub time_changes: &'a [(usize, TimeSignature)],
+    /// Later keys, from the measure and the ticks into it where they start.
+    pub key_changes: &'a [(usize, f64, Key)],
     pub key: Option<Key>,
     pub time: Option<TimeSignature>,
     pub implicit_first: bool,
     pub graces: usize,
 }
 
-/// Rounds ticks to the grid of sixteenths.
+/// Rounds ticks to the grid of sixteenths, keeping points that lie exactly
+/// on the grid of triplet sixteenths.
 pub(crate) fn grid(t: f64) -> i64 {
+    let triplet = Duration::triplet(NoteValue::Sixteenth).ticks() as f64;
+    if (t - (t / triplet).round() * triplet).abs() < 1e-6 {
+        return (t / triplet).round() as i64 * triplet as i64;
+    }
     let sixteenth = Duration::new(NoteValue::Sixteenth).ticks() as f64;
     ((t / sixteenth).round() * sixteenth) as i64
 }
@@ -117,7 +124,7 @@ fn read_figurings(
 fn fit(ticks: f64) -> (Duration, bool) {
     let best = NoteValue::ALL
         .into_iter()
-        .flat_map(|v| [Duration::new(v), Duration::dotted(v)])
+        .flat_map(|v| [Duration::new(v), Duration::dotted(v), Duration::triplet(v)])
         .min_by(|a, b| {
             (a.ticks() as f64 - ticks)
                 .abs()
@@ -135,7 +142,9 @@ fn describe(duration: Duration) -> String {
         NoteValue::Eighth => "an eighth",
         NoteValue::Sixteenth => "a sixteenth",
     };
-    if duration.dotted {
+    if duration.triplet {
+        format!("{value}, as a triplet")
+    } else if duration.dotted {
         format!("{value}, dotted")
     } else {
         value.to_string()
@@ -213,6 +222,11 @@ pub(crate) fn assemble(
         .iter()
         .map(|&(m, t)| (grid(starts[m]), t))
         .collect();
+    let key_changes: Vec<(i64, Key)> = layout
+        .key_changes
+        .iter()
+        .map(|&(m, offset, k)| (grid(starts[m] + offset), k))
+        .collect();
     let meter_starts: Vec<i64> = meter.iter().map(|&(at, _)| at).collect();
 
     let mut items: Vec<(i64, i64, Option<usize>)> = Vec::new();
@@ -232,7 +246,7 @@ pub(crate) fn assemble(
     }
 
     let mut notes = Vec::new();
-    let (mut next_meter, mut split, mut inexact) = (0, 0, 0);
+    let (mut next_meter, mut next_key, mut split, mut inexact) = (0, 0, 0, 0);
     for (start, end, entry) in items {
         let barriers = if entry.is_some() {
             &meter_starts
@@ -241,7 +255,7 @@ pub(crate) fn assemble(
         };
         let (mut at, mut pieces) = (start, 0);
         for (a, b) in cut(start, end, barriers) {
-            for duration in Duration::pieces((b - a) as u32) {
+            for duration in Duration::pieces_on_grid((b - a) as u32) {
                 let mut note = match entry {
                     Some(k) => BassNote::new(spans[entries[k].note].pitch),
                     None => BassNote::rest(duration),
@@ -250,6 +264,10 @@ pub(crate) fn assemble(
                 while next_meter < meter.len() && meter[next_meter].0 <= at {
                     note.time_change = Some(meter[next_meter].1);
                     next_meter += 1;
+                }
+                while next_key < key_changes.len() && key_changes[next_key].0 <= at {
+                    note.key_change = Some(key_changes[next_key].1);
+                    next_key += 1;
                 }
                 if let Some(k) = entry
                     && pieces == 0
@@ -296,7 +314,7 @@ pub(crate) fn assemble(
     }
     if inexact > 0 {
         changes.push(format!(
-            "{inexact} notes have a length with no matching note value (triplets, for example); they were rounded to the nearest sixteenth."
+            "{inexact} notes have a length with no matching note value ; they were rounded to the nearest sixteenth."
         ));
     }
     if split > 0 {

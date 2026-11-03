@@ -2334,6 +2334,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "intavolatura-cli"
+version = "0.1.0"
+dependencies = [
+ "intavolatura-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "intavolatura-core"
 version = "0.1.0"
 dependencies = [

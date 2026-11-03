@@ -51,12 +51,14 @@ export component DurationBar inherits HorizontalLayout {
     // Index into whole, half, quarter, eighth, sixteenth.
     in property <int> value;
     in property <bool> dotted;
+    in property <bool> triplet;
     in property <color> ink;
     in property <color> muted;
     in property <color> highlight;
     in property <color> panel-border;
     callback value-selected(int);
     callback dot-toggled();
+    callback triplet-toggled();
 
     spacing: 2px;
     alignment: start;
@@ -87,6 +89,19 @@ export component DurationBar inherits HorizontalLayout {
         panel-border: root.panel-border;
         clicked => {
             root.dot-toggled();
+        }
+    }
+
+    ValueButton {
+        glyph: "\u{E883}";
+        key: "/";
+        active: root.triplet;
+        ink: root.ink;
+        muted: root.muted;
+        highlight: root.highlight;
+        panel-border: root.panel-border;
+        clicked => {
+            root.triplet-toggled();
         }
     }
 }
