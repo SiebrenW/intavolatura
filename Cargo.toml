@@ -5,6 +5,7 @@ members = ["crates/intavolatura-core", "crates/intavolatura", "crates/intavolatu
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0 OR 0BSD"
 
 [profile.release]
 lto = true

@@ -4,8 +4,8 @@
 # macos:   a universal (arm64 + x86_64) Intavolatura.app in intavolatura-<version>-macos.zip
 # linux:   intavolatura-<version>-linux-x86_64.tar.gz
 # windows: intavolatura-<version>-windows-x86_64.zip
-# Bravura's licence (OFL) goes along, as the font is embedded. Used by
-# .github/workflows/release.yml; runs locally too.
+# The app's licences and Bravura's (OFL, the font is embedded) go along.
+# Used by .github/workflows/release.yml; runs locally too.
 set -eu
 platform=$1
 version=$2
@@ -27,7 +27,7 @@ macos)
     lipo -create -output "$app/Contents/MacOS/intavolatura" \
         target/aarch64-apple-darwin/release/intavolatura \
         target/x86_64-apple-darwin/release/intavolatura
-    cp crates/intavolatura/fonts/OFL.txt "$app/Contents/Resources/"
+    cp LICENSE-APACHE LICENSE-0BSD crates/intavolatura/fonts/OFL.txt "$app/Contents/Resources/"
     cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,14 +51,14 @@ linux)
     cargo build --release --locked -p intavolatura
     dir="$stage/intavolatura-$version"
     mkdir -p "$dir"
-    cp target/release/intavolatura crates/intavolatura/fonts/OFL.txt "$dir/"
+    cp target/release/intavolatura LICENSE-APACHE LICENSE-0BSD crates/intavolatura/fonts/OFL.txt "$dir/"
     tar -C "$stage" -czf "$out/intavolatura-$version-linux-x86_64.tar.gz" "intavolatura-$version"
     ;;
 windows)
     cargo build --release --locked -p intavolatura
     dir="$stage/intavolatura-$version"
     mkdir -p "$dir"
-    cp target/release/intavolatura.exe crates/intavolatura/fonts/OFL.txt "$dir/"
+    cp target/release/intavolatura.exe LICENSE-APACHE LICENSE-0BSD crates/intavolatura/fonts/OFL.txt "$dir/"
     (cd "$stage" && 7z a -tzip "$out/intavolatura-$version-windows-x86_64.zip" "intavolatura-$version" >/dev/null)
     ;;
 *)
