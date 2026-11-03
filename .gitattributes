@@ -1,0 +1,2 @@
+# Golden responses are compared byte for byte; keep LF on Windows checkouts.
+crates/intavolatura-cli/tests/golden/*.json text eol=lf
